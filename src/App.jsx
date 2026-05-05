@@ -184,9 +184,9 @@ export default function App() {
         `گزارش RFQ
 مشتری: ${c || "نامشخص"} | RFQ: ${r || "—"}
 
-سوابق درخواست این مشتری:
-تعداد درخواست‌های این مشتری: ${requestStats.customerRequests}
-تعداد درخواست‌های فروش‌شده: ${requestStats.soldRequests}
+سوابق فرصت‌های این مشتری:
+تعداد فرصت‌های این مشتری: ${requestStats.customerRequests}
+تعداد فرصت‌های فروش‌شده: ${requestStats.soldRequests}
 ارزش فرصت‌های این مشتری: ${formatMoney(requestStats.requestAmount)}
 نرخ تبدیل: ${requestStats.conversionRate}%
 کیفیت مشتری: ${requestStats.quality}
@@ -414,32 +414,15 @@ ${ai.nextStep || "—"}`
             }}
           >
             {[
-              {
-                key: "purchase",
-                label: "Purchase 2025",
-                desc: "سوابق خرید",
-                icon: "💰",
-              },
-              {
-                key: "req25",
-                label: "Request 2025",
-                desc: "درخواست‌ها",
-                icon: "📋",
-              },
-              {
-                key: "req26",
-                label: "Request 2026",
-                desc: "درخواست‌ها",
-                icon: "📋",
-              },
+              { key: "purchase", label: "Purchase 2025", desc: "سوابق خرید", icon: "💰" },
+              { key: "req25", label: "Request 2025", desc: "درخواست‌ها", icon: "📋" },
+              { key: "req26", label: "Request 2026", desc: "درخواست‌ها", icon: "📋" },
             ].map(f => (
               <label
                 key={f.key}
                 style={{
                   background: bg3,
-                  border: `1.5px ${
-                    fileLabels[f.key] ? "solid" : "dashed"
-                  } ${fileLabels[f.key] ? "#10b981" : bdr}`,
+                  border: `1.5px ${fileLabels[f.key] ? "solid" : "dashed"} ${fileLabels[f.key] ? "#10b981" : bdr}`,
                   borderRadius: 10,
                   padding: "16px 12px",
                   textAlign: "center",
@@ -455,18 +438,9 @@ ${ai.nextStep || "—"}`
                 />
 
                 <div style={{ fontSize: 24, marginBottom: 6 }}>{f.icon}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
-                  {f.label}
-                </div>
-                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>
-                  {f.desc}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: fileLabels[f.key] ? "#34d399" : "#64748b",
-                  }}
-                >
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
+                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>{f.desc}</div>
+                <div style={{ fontSize: 11, color: fileLabels[f.key] ? "#34d399" : "#64748b" }}>
                   {fileLabels[f.key] || "کلیک برای انتخاب"}
                 </div>
               </label>
@@ -486,10 +460,7 @@ ${ai.nextStep || "—"}`
               کلید API از Vercel Environment Variable خوانده می‌شود.
             </div>
 
-            <button
-              style={btn(apiTested ? "primary" : "secondary")}
-              onClick={testApi}
-            >
+            <button style={btn(apiTested ? "primary" : "secondary")} onClick={testApi}>
               {apiTested ? "✅ متصل" : "تست اتصال"}
             </button>
           </div>
@@ -605,10 +576,7 @@ Please send price for China and UAE.`}
             style={{
               width: "100%",
               padding: 13,
-              background:
-                isReady && phase !== "running"
-                  ? "linear-gradient(135deg,#3b82f6,#6366f1)"
-                  : bg3,
+              background: isReady && phase !== "running" ? "linear-gradient(135deg,#3b82f6,#6366f1)" : bg3,
               color: isReady && phase !== "running" ? "#fff" : "#64748b",
               border: "none",
               borderRadius: 10,
@@ -769,20 +737,15 @@ Please send price for China and UAE.`}
                           : sc >= 40
                             ? "rgba(245,158,11,0.15)"
                             : "rgba(239,68,68,0.15)",
-                      color:
-                        sc >= 70 ? "#34d399" : sc >= 40 ? "#fbbf24" : "#f87171",
-                      border: `2px solid ${
-                        sc >= 70 ? "#10b981" : sc >= 40 ? "#f59e0b" : "#ef4444"
-                      }`,
+                      color: sc >= 70 ? "#34d399" : sc >= 40 ? "#fbbf24" : "#f87171",
+                      border: `2px solid ${sc >= 70 ? "#10b981" : sc >= 40 ? "#f59e0b" : "#ef4444"}`,
                     }}
                   >
                     {sc}
                   </div>
 
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>
-                      مشتری
-                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>مشتری</div>
 
                     <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 4 }}>
                       {cust || "نامشخص"}
@@ -820,23 +783,23 @@ Please send price for China and UAE.`}
                   <div style={card}>
                     <div style={{ ...secTitle, marginBottom: 10 }}>
                       <div style={bar} />
-                      📋 سوابق درخواست این مشتری
+                      📋 سوابق فرصت‌های این مشتری
                     </div>
 
                     <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>کل درخواست‌های فایل‌ها</span>
+                      <span style={{ color: "#64748b" }}>کل فرصت‌های فایل‌ها</span>
                       <span style={{ fontWeight: 600 }}>{requestStats.totalAllRequests}</span>
                     </div>
 
                     <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>درخواست‌های این مشتری</span>
+                      <span style={{ color: "#64748b" }}>فرصت‌های این مشتری</span>
                       <span style={{ fontWeight: 600, color: "#60a5fa" }}>
                         {requestStats.customerRequests}
                       </span>
                     </div>
 
                     <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>درخواست‌های فروش‌شده</span>
+                      <span style={{ color: "#64748b" }}>فرصت‌های فروش‌شده</span>
                       <span style={{ fontWeight: 600, color: "#34d399" }}>
                         {requestStats.soldRequests}
                       </span>
@@ -860,7 +823,14 @@ Please send price for China and UAE.`}
                   <div style={card}>
                     <div style={{ ...secTitle, marginBottom: 10 }}>
                       <div style={bar} />
-                      💰 سوابق خرید و اطلاعات تکمیلی
+                      💰 سوابق خرید واقعی
+                    </div>
+
+                    <div style={mRow}>
+                      <span style={{ color: "#64748b" }}>جمع کل خرید واقعی ثبت‌شده</span>
+                      <span style={{ fontWeight: 700, color: "#34d399" }}>
+                        {purchaseStats.totalPurchaseCount} خرید / {formatMoney(purchaseStats.totalPurchaseAmount)}
+                      </span>
                     </div>
 
                     <div style={mRow}>
@@ -888,13 +858,6 @@ Please send price for China and UAE.`}
                       <span style={{ color: "#64748b" }}>مبلغ خریدهای جدید دستی</span>
                       <span style={{ fontWeight: 600, color: "#60a5fa" }}>
                         {formatMoney(purchaseStats.manualPurchaseAmount)}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>جمع کل خرید واقعی ثبت‌شده</span>
-                      <span style={{ fontWeight: 600, color: "#34d399" }}>
-                        {formatMoney(purchaseStats.totalPurchaseAmount)}
                       </span>
                     </div>
 
@@ -973,18 +936,21 @@ Please send price for China and UAE.`}
                       {winScore || "—"}%
                     </div>
 
-                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.8 }}>
-                      سطح: {winChance?.level || "—"}
-                      <br />
-                      معیارها: {(winChance?.factors || []).join("، ") || "—"}
-                      <br />
-                      توضیح: {winChance?.explanation || "—"}
-                      <br />
-                      تحلیل AI: {ai.winChanceCommentary?.businessReasons || "—"}
-                      <br />
-                      ریسک‌ها: {ai.winChanceCommentary?.riskFactors || "—"}
-                      <br />
-                      افزایش شانس: {ai.winChanceCommentary?.howToIncreaseChance || "—"}
+                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.9 }}>
+                      <div>سطح: {winChance?.level || "—"}</div>
+                      <div style={{ marginTop: 6 }}>
+                        معیارهای اصلی:
+                        <br />
+                        {(winChance?.factors || []).slice(0, 4).map((f, i) => (
+                          <span key={i}>• {f}<br /></span>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 6, color: "#64748b" }}>
+                        {winChance?.explanation || "—"}
+                      </div>
+                      <div style={{ marginTop: 8 }}>
+                        راه افزایش شانس: {ai.winChanceCommentary?.howToIncreaseChance || "—"}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1087,6 +1053,34 @@ Please send price for China and UAE.`}
                       ))}
                     </tbody>
                   </table>
+
+                  {(ai.parts || []).length > 0 && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        background: bg3,
+                        border: `1px solid ${bdr}`,
+                        borderRadius: 10,
+                        padding: 14,
+                        fontSize: 13,
+                        lineHeight: 1.9,
+                        color: "#94a3b8",
+                      }}
+                    >
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                        توضیح ساده کاربرد قطعات
+                      </div>
+
+                      {(ai.parts || []).map((p, i) => (
+                        <div key={i} style={{ marginBottom: 8 }}>
+                          <strong style={{ color: "#60a5fa" }}>
+                            {p.partNumber || `آیتم ${i + 1}`}:
+                          </strong>{" "}
+                          {p.application || p.description || "کاربرد دقیق این قطعه نیازمند بررسی بیشتر است."}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div

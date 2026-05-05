@@ -111,7 +111,7 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
     quality,
     topBrands,
     background: matched.length
-      ? `این مشتری ${matched.length} درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل شده و نرخ تبدیل ${conversionRate}% است.`
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل شده و نرخ تبدیل ${conversionRate}% است.`
       : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
   };
 }
@@ -122,7 +122,7 @@ export function analyzeCustomerPurchases(rows, customer, manualPurchaseCount, ma
 
   const base = {
     loaded: !!rows,
-    found: manualCount > 0,
+    found: manualCount > 0 || manualAmount > 0,
     filePurchaseCount: 0,
     filePurchaseAmount: 0,
     manualPurchaseCount: manualCount,
@@ -131,7 +131,10 @@ export function analyzeCustomerPurchases(rows, customer, manualPurchaseCount, ma
     totalPurchaseAmount: manualAmount,
     purchaseCount: manualCount,
     purchaseAmount: manualAmount,
-    background: "فایل خرید بارگذاری نشده یا نام مشتری وارد نشده است.",
+    background:
+      manualCount > 0 || manualAmount > 0
+        ? "در فایل Purchase خریدی پیدا نشد یا فایل بارگذاری نشده، اما خرید دستی جدید وارد شده و در جمع خرید واقعی لحاظ شده است."
+        : "فایل خرید بارگذاری نشده یا نام مشتری وارد نشده است.",
   };
 
   if (!rows || !customer) return base;
@@ -149,7 +152,10 @@ export function analyzeCustomerPurchases(rows, customer, manualPurchaseCount, ma
     return {
       ...base,
       loaded: true,
-      background: "ستون نام مشتری در فایل خرید پیدا نشد.",
+      background:
+        manualCount > 0 || manualAmount > 0
+          ? "ستون نام مشتری در فایل Purchase پیدا نشد، اما خرید دستی جدید وارد شده و در جمع خرید واقعی لحاظ شده است."
+          : "ستون نام مشتری در فایل Purchase پیدا نشد.",
     };
   }
 
@@ -160,21 +166,27 @@ export function analyzeCustomerPurchases(rows, customer, manualPurchaseCount, ma
     0
   );
 
+  const totalCount = matched.length + manualCount;
+  const totalAmount = fileAmount + manualAmount;
+
   return {
     loaded: true,
-    found: matched.length + manualCount > 0,
+    found: totalCount > 0 || totalAmount > 0,
     filePurchaseCount: matched.length,
     filePurchaseAmount: fileAmount,
     manualPurchaseCount: manualCount,
     manualPurchaseAmount: manualAmount,
-    totalPurchaseCount: matched.length + manualCount,
-    totalPurchaseAmount: fileAmount + manualAmount,
-    purchaseCount: matched.length + manualCount,
-    purchaseAmount: fileAmount + manualAmount,
-    background: matched.length
-      ? `برای این مشتری ${matched.length} رکورد خرید در فایل Purchase پیدا شد.`
-      : manualCount
-        ? "در فایل Purchase رکوردی پیدا نشد، اما خریدهای دستی جدید وارد شده‌اند."
-        : "برای این مشتری در فایل خرید، رکوردی پیدا نشد.",
+    totalPurchaseCount: totalCount,
+    totalPurchaseAmount: totalAmount,
+    purchaseCount: totalCount,
+    purchaseAmount: totalAmount,
+    background:
+      matched.length > 0 && (manualCount > 0 || manualAmount > 0)
+        ? `برای این مشتری ${matched.length} خرید در فایل Purchase پیدا شد و خرید دستی جدید هم به جمع خرید واقعی اضافه شد.`
+        : matched.length > 0
+          ? `برای این مشتری ${matched.length} رکورد خرید در فایل Purchase پیدا شد.`
+          : manualCount > 0 || manualAmount > 0
+            ? "در فایل Purchase خریدی برای این مشتری پیدا نشد، اما خرید دستی جدید وارد شده و در جمع خرید واقعی لحاظ شده است."
+            : "برای این مشتری در فایل Purchase خریدی پیدا نشد.",
   };
 }
