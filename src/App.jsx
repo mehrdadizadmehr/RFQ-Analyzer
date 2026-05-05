@@ -156,11 +156,6 @@ const loadFile = useCallback((e, key) => {
 },[]);
 
 const testApi = async () => {
-  if(!apiKey.startsWith("sk-ant")){
-    showToast("کلید باید با sk-ant شروع شود");
-    return;
-  }
-
   showToast("در حال تست...");
 
   try {
@@ -181,7 +176,7 @@ const testApi = async () => {
       showToast("✅ اتصال موفق!");
     } else {
       const d = await r.json();
-      showToast("❌ " + (d.error?.message || r.status));
+      showToast("❌ " + (d.error?.message || d.error || r.status));
     }
 
   } catch(e){
