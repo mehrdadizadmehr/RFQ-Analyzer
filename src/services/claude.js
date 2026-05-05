@@ -1,5 +1,42 @@
 import { MODEL_NAME } from "../constants/rfq";
 
+function extractJsonObject(text) {
+  if (!text) throw new Error("پاسخ Claude خالی است.");
+
+  let cleaned = text
+    .replace(/```json/g, "")
+    .replace(/```/g, "")
+    .trim();
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error("در پاسخ Claude خروجی JSON پیدا نشد.");
+  }
+
+  cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+
+  // حذف commaهای اضافه قبل از } یا ]
+  cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+
+  // حذف کاراکترهای کنترل نامعتبر
+  cleaned = cleaned.replace(/[\u0000-\u001F]+/g, " ");
+
+  return cleaned;
+}
+
+function parseClaudeJson(text) {
+  const jsonText = extractJsonObject(text);
+
+  try {
+    return JSON.parse(jsonText);
+  } catch (err) {
+    console.error("Raw Claude JSON:", jsonText);
+    throw new Error("Claude خروجی JSON نامعتبر داد: " + err.message);
+  }
+}
+
 export async function callClaude(prompt, maxTokens = 3000) {
   const response = await fetch("/api/claude", {
     method: "POST",
@@ -27,13 +64,8 @@ export async function callClaude(prompt, maxTokens = 3000) {
   }
 
   const text = data.content?.map(c => c.text || "").join("") || "";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
 
-  if (!jsonMatch) {
-    throw new Error("در پاسخ Claude خروجی JSON پیدا نشد.");
-  }
-
-  return JSON.parse(jsonMatch[0]);
+  return parseClaudeJson(text);
 }
 
 export async function testClaudeConnection() {
