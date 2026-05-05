@@ -63,7 +63,7 @@ async function callClaude(prompt) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-3-haiku-20240307",
       max_tokens: 2000,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -165,7 +165,7 @@ const testApi = async () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-3-haiku-20240307",
         max_tokens: 10,
         messages: [{ role: "user", content: "hi" }]
       })
