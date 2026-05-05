@@ -57,7 +57,7 @@ function analyzeRequests(rows25, rows26, customer) {
 }
 
 async function callClaude(apiKey, prompt) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/api/claude", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -125,37 +125,68 @@ export default function App() {
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(""),3500); };
   const isReady = apiKey.startsWith("sk-ant") && partsRaw.trim().length > 0;
 
-  const loadFile = useCallback((e, key) => {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const XLSX = window.XLSX;
-        if(!XLSX){showToast("لحظه صبر کنید...");return;}
-        const wb = XLSX.read(ev.target.result,{type:"binary"});
-        const rows = [];
-        wb.SheetNames.forEach(n=>{ rows.push(...XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:""})); });
-        setFiles(f=>({...f,[key]:rows}));
-        setFileLabels(l=>({...l,[key]:`✓ ${rows.length} ردیف`}));
-        showToast(`${file.name} بارگذاری شد`);
-      } catch(err){showToast("خطا: "+err.message);}
-    };
-    reader.readAsBinaryString(file);
-  },[]);
+const loadFile = useCallback((e, key) => {
+  const file = e.target.files[0]; 
+  if(!file) return;
 
-  const testApi = async () => {
-    if(!apiKey.startsWith("sk-ant")){showToast("کلید باید با sk-ant شروع شود");return;}
-    showToast("در حال تست...");
+  const reader = new FileReader();
+
+  reader.onload = ev => {
     try {
-      const r = await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:10,messages:[{role:"user",content:"hi"}]})
+      // ✅ FIX: استفاده مستقیم از XLSX
+      const wb = XLSX.read(ev.target.result,{type:"binary"});
+
+      const rows = [];
+      wb.SheetNames.forEach(n=>{
+        rows.push(...XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:""}));
       });
-      if(r.ok){setApiTested(true);showToast("✅ اتصال موفق!");}
-      else{const d=await r.json();showToast("❌ "+(d.error?.message||r.status));}
-    } catch(e){showToast("❌ خطا: "+e.message);}
+
+      setFiles(f=>({...f,[key]:rows}));
+      setFileLabels(l=>({...l,[key]:`✓ ${rows.length} ردیف`}));
+
+      showToast(`${file.name} بارگذاری شد`);
+
+    } catch(err){
+      showToast("خطا: "+err.message);
+    }
   };
+
+  reader.readAsBinaryString(file);
+},[]);
+
+const testApi = async () => {
+  if(!apiKey.startsWith("sk-ant")){
+    showToast("کلید باید با sk-ant شروع شود");
+    return;
+  }
+
+  showToast("در حال تست...");
+
+  try {
+    const r = await fetch("/api/claude", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 10,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+
+    if(r.ok){
+      setApiTested(true);
+      showToast("✅ اتصال موفق!");
+    } else {
+      const d = await r.json();
+      showToast("❌ " + (d.error?.message || r.status));
+    }
+
+  } catch(e){
+    showToast("❌ خطا: " + e.message);
+  }
+};
 
   const setStepState = (id,st) => setSteps(prev=>prev.map(s=>s.id===id?{...s,state:st}:s));
 
