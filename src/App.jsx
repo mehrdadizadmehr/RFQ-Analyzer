@@ -4,15 +4,27 @@ import { useState, useCallback } from "react";
 const MODEL_NAME = "claude-haiku-4-5-20251001";
 
 const STEPS = [
-  { id: "s1", icon: "🗂️", text: "بررسی سابقه خرید مشتری" },
-  { id: "s2", icon: "📋", text: "تحلیل درخواست‌های قبلی و نرخ تبدیل" },
-  { id: "s3", icon: "🔍", text: "استخراج و اعتبارسنجی اطلاعات درخواست" },
+  { id: "s1", icon: "📋", text: "بررسی سوابق درخواست این مشتری" },
+  { id: "s2", icon: "💰", text: "بررسی سوابق خرید و اطلاعات تکمیلی" },
+  { id: "s3", icon: "🔍", text: "استخراج آیتم‌ها از متن درخواست" },
   { id: "s4", icon: "🤖", text: "تحلیل هوشمند با Claude AI" },
   { id: "s5", icon: "📊", text: "آماده‌سازی گزارش نهایی" },
 ];
 
-function delay(ms) { 
-  return new Promise(r => setTimeout(r, ms)); 
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function normalizeText(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function parseNumber(v) {
+  if (v === null || v === undefined) return 0;
+  const cleaned = String(v)
+    .replace(/,/g, "")
+    .replace(/[^\d.-]/g, "");
+  return parseFloat(cleaned) || 0;
 }
 
 function findColumn(rows, candidates) {
@@ -20,77 +32,283 @@ function findColumn(rows, candidates) {
   const keys = Object.keys(rows[0]);
 
   for (const c of candidates) {
-    const found = keys.find(k => k.toLowerCase().includes(c.toLowerCase()));
+    const found = keys.find(k => normalizeText(k).includes(normalizeText(c)));
     if (found) return found;
   }
 
   return null;
 }
 
-function analyzePurchase(rows, customer) {
-  if (!rows || !customer) return null;
+function isSameCustomer(rowValue, customer) {
+  const val = normalizeText(rowValue);
+  const c = normalizeText(customer);
 
-  const nameCol = findColumn(rows, ["customer", "مشتری", "name", "نام", "company", "شرکت"]);
-  const amountCol = findColumn(rows, ["amount", "مبلغ", "price", "قیمت", "total", "جمع"]);
+  if (!val || !c) return false;
 
-  if (!nameCol) return { found: false };
-
-  const matched = rows.filter(r => {
-    const val = String(r[nameCol] || "").toLowerCase();
-    const customerName = customer.toLowerCase();
-    return val.includes(customerName) || customerName.includes(val.split(" ")[0]);
-  });
-
-  const totalAmount = matched.reduce((s, r) => {
-    const raw = String(r[amountCol] || "").replace(/,/g, "");
-    return s + (parseFloat(raw) || 0);
-  }, 0);
-
-  return {
-    found: matched.length > 0,
-    count: matched.length,
-    totalAmount,
-  };
+  return (
+    val.includes(c) ||
+    c.includes(val) ||
+    val.split(" ").some(w => w.length > 2 && c.includes(w)) ||
+    c.split(" ").some(w => w.length > 2 && val.includes(w))
+  );
 }
 
-function analyzeRequests(rows25, rows26, customer) {
+function analyzeCustomerRequests(rows25, rows26, customer) {
   const allRows = [...(rows25 || []), ...(rows26 || [])];
 
-  if (!allRows.length || !customer) return null;
+  if (!allRows.length || !customer) {
+    return {
+      loaded: false,
+      found: false,
+      totalAllRequests: allRows.length,
+      customerRequests: 0,
+      soldRequests: 0,
+      requestAmount: 0,
+      conversionRate: 0,
+      quality: "نامشخص",
+      background: "فایل درخواست‌ها بارگذاری نشده یا نام مشتری وارد نشده است.",
+    };
+  }
 
-  const nameCol = findColumn(allRows, ["customer", "مشتری", "name", "نام", "company", "شرکت"]);
-  const statusCol = findColumn(allRows, ["status", "وضعیت", "result", "نتیجه"]);
+  const nameCol = findColumn(allRows, [
+    "customer",
+    "مشتری",
+    "customer name",
+    "نام مشتری",
+    "company",
+    "شرکت",
+  ]);
 
-  if (!nameCol) return { found: false };
+  const statusCol = findColumn(allRows, [
+    "status",
+    "وضعیت",
+    "commercial status",
+    "نتیجه",
+    "result",
+  ]);
 
-  const matched = allRows.filter(r => {
-    const val = String(r[nameCol] || "").toLowerCase();
-    const customerName = customer.toLowerCase();
-    return val.includes(customerName) || customerName.includes(val.split(" ")[0]);
-  });
+  const amountCol = findColumn(allRows, [
+    "estimate price",
+    "estimate",
+    "pi amount",
+    "amount",
+    "مبلغ",
+    "قیمت",
+    "total",
+    "جمع",
+    "aed",
+  ]);
 
-  const converted = matched.filter(r => {
-    const s = String(r[statusCol] || "").toLowerCase();
+  const brandCol = findColumn(allRows, [
+    "brand",
+    "برند",
+  ]);
+
+  if (!nameCol) {
+    return {
+      loaded: true,
+      found: false,
+      totalAllRequests: allRows.length,
+      customerRequests: 0,
+      soldRequests: 0,
+      requestAmount: 0,
+      conversionRate: 0,
+      quality: "نامشخص",
+      background: "ستون نام مشتری در فایل‌های درخواست پیدا نشد.",
+    };
+  }
+
+  const matched = allRows.filter(r => isSameCustomer(r[nameCol], customer));
+
+  const sold = matched.filter(r => {
+    const s = normalizeText(r[statusCol]);
     return (
-      s.includes("تایید") ||
-      s.includes("confirm") ||
+      s.includes("sold") ||
+      s.includes("sale") ||
       s.includes("order") ||
+      s.includes("confirm") ||
+      s.includes("تایید") ||
+      s.includes("فروش") ||
       s.includes("خرید") ||
-      s.includes("فروش")
+      s.includes("موفق")
     );
   });
 
+  const requestAmount = matched.reduce((sum, r) => sum + parseNumber(r[amountCol]), 0);
+
+  const conversionRate = matched.length
+    ? Math.round((sold.length / matched.length) * 100)
+    : 0;
+
+  let quality = "مشتری جدید / بدون سابقه کافی";
+
+  if (matched.length >= 10 && conversionRate >= 35) quality = "کیفیت بالا";
+  else if (matched.length >= 5 && conversionRate >= 20) quality = "کیفیت متوسط رو به بالا";
+  else if (matched.length >= 2 && conversionRate > 0) quality = "کیفیت متوسط";
+  else if (matched.length > 0 && conversionRate === 0) quality = "درخواست‌محور بدون تبدیل ثبت‌شده";
+
+  const brands = {};
+  matched.forEach(r => {
+    const b = String(r[brandCol] || "").trim();
+    if (b) brands[b] = (brands[b] || 0) + 1;
+  });
+
+  const topBrands = Object.entries(brands)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([b, count]) => `${b} (${count})`);
+
   return {
+    loaded: true,
     found: matched.length > 0,
-    totalRequests: matched.length,
-    converted: converted.length,
-    conversionRate: matched.length > 0
-      ? Math.round((converted.length / matched.length) * 100)
-      : 0,
+    totalAllRequests: allRows.length,
+    customerRequests: matched.length,
+    soldRequests: sold.length,
+    requestAmount,
+    conversionRate,
+    quality,
+    topBrands,
+    background: matched.length
+      ? `این مشتری ${matched.length} درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل شده و نرخ تبدیل ${conversionRate}% است.`
+      : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
   };
 }
 
-async function callClaude(prompt, maxTokens = 2000) {
+function analyzeCustomerPurchases(rows, customer) {
+  if (!rows || !customer) {
+    return {
+      loaded: false,
+      found: false,
+      purchaseCount: 0,
+      purchaseAmount: 0,
+      background: "فایل خرید بارگذاری نشده یا نام مشتری وارد نشده است.",
+    };
+  }
+
+  const nameCol = findColumn(rows, [
+    "customer",
+    "مشتری",
+    "customer name",
+    "نام مشتری",
+    "company",
+    "شرکت",
+  ]);
+
+  const amountCol = findColumn(rows, [
+    "amount",
+    "buy amount",
+    "purchase amount",
+    "pi amount",
+    "مبلغ",
+    "قیمت",
+    "total",
+    "جمع",
+    "aed",
+    "rmb",
+  ]);
+
+  if (!nameCol) {
+    return {
+      loaded: true,
+      found: false,
+      purchaseCount: 0,
+      purchaseAmount: 0,
+      background: "ستون نام مشتری در فایل خرید پیدا نشد.",
+    };
+  }
+
+  const matched = rows.filter(r => isSameCustomer(r[nameCol], customer));
+
+  const purchaseAmount = matched.reduce(
+    (sum, r) => sum + parseNumber(r[amountCol]),
+    0
+  );
+
+  return {
+    loaded: true,
+    found: matched.length > 0,
+    purchaseCount: matched.length,
+    purchaseAmount,
+    background: matched.length
+      ? `برای این مشتری ${matched.length} رکورد خرید ثبت‌شده پیدا شد.`
+      : "برای این مشتری در فایل خرید، رکوردی پیدا نشد.",
+  };
+}
+
+function buildPrompt({
+  customer,
+  rfqNum,
+  requestText,
+  notes,
+  extraCustomerInfo,
+  requestStats,
+  purchaseStats,
+}) {
+  return `
+Role: B2B industrial automation RFQ analyst.
+
+Task:
+Extract items from the customer RFQ/email and analyze them.
+Return ONLY valid JSON. No markdown. No explanation.
+
+Customer:
+name=${customer || "unknown"}
+rfq=${rfqNum || "unknown"}
+internal_notes=${notes || "none"}
+extra_customer_info=${extraCustomerInfo || "none"}
+
+Customer request history from local files:
+total_all_requests=${requestStats.totalAllRequests}
+customer_requests=${requestStats.customerRequests}
+sold_requests=${requestStats.soldRequests}
+customer_request_amount=${requestStats.requestAmount}
+conversion_rate=${requestStats.conversionRate}
+customer_quality=${requestStats.quality}
+top_brands=${(requestStats.topBrands || []).join(", ") || "unknown"}
+background=${requestStats.background}
+
+Purchase history from local files:
+purchase_records=${purchaseStats.purchaseCount}
+purchase_amount=${purchaseStats.purchaseAmount}
+purchase_background=${purchaseStats.background}
+
+RFQ/email text:
+"""
+${requestText}
+"""
+
+JSON schema:
+{
+  "customerScore": 0,
+  "customerLevel": "VIP|Regular|New|Low",
+  "dealValue": "High|Medium|Low",
+  "priority": "Urgent|High|Normal|Low",
+  "summary": "",
+  "extractedItemsCount": 0,
+  "customerBackgroundCheck": "",
+  "parts": [
+    {
+      "partNumber": "",
+      "qty": "",
+      "manufacturer": "",
+      "description": "",
+      "application": "",
+      "status": "active|eol|warning|unknown",
+      "statusLabel": "",
+      "priceChina": "",
+      "priceUAE": "",
+      "alternatives": "",
+      "eolNote": ""
+    }
+  ],
+  "recommendation": "",
+  "risks": "",
+  "nextStep": ""
+}
+`;
+}
+
+async function callClaude(prompt, maxTokens = 2500) {
   const response = await fetch("/api/claude", {
     method: "POST",
     headers: {
@@ -103,13 +321,13 @@ async function callClaude(prompt, maxTokens = 2000) {
     }),
   });
 
-  const textResponse = await response.text();
+  const raw = await response.text();
 
   let data;
   try {
-    data = JSON.parse(textResponse);
+    data = JSON.parse(raw);
   } catch {
-    throw new Error("پاسخ API معتبر نیست. احتمالاً API Route درست پاسخ نداده است.");
+    throw new Error("API پاسخ JSON معتبر نداد.");
   }
 
   if (!response.ok) {
@@ -120,79 +338,10 @@ async function callClaude(prompt, maxTokens = 2000) {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
 
   if (!jsonMatch) {
-    throw new Error("فرمت پاسخ Claude معتبر نیست. JSON پیدا نشد.");
+    throw new Error("در پاسخ Claude خروجی JSON پیدا نشد.");
   }
 
   return JSON.parse(jsonMatch[0]);
-}
-
-function buildPrompt(customer, rfqNum, requestText, notes, purchase, request) {
-  const pInfo = purchase?.found
-    ? `${purchase.count} بار خرید قبلی، جمع مبلغ: ${purchase.totalAmount.toLocaleString()}`
-    : purchase?.found === false
-      ? "مشتری جدید یا بدون سابقه خرید پیدا شده"
-      : "فایل سوابق خرید بارگذاری نشده";
-
-  const rInfo = request?.found
-    ? `${request.totalRequests} درخواست قبلی، ${request.converted} تبدیل به خرید، نرخ تبدیل: ${request.conversionRate}%`
-    : request?.found === false
-      ? "سابقه درخواست قبلی پیدا نشد"
-      : "فایل درخواست‌ها بارگذاری نشده";
-
-  return `
-تو یک تحلیل‌گر حرفه‌ای فروش و تامین قطعات اتوماسیون صنعتی هستی.
-
-وظیفه تو:
-1. متن کامل ایمیل یا RFQ مشتری را بخوان.
-2. Part Number ها را استخراج کن.
-3. تعداد هر آیتم را اگر وجود داشت استخراج کن.
-4. برند/Manufacturer را اگر از متن قابل تشخیص بود استخراج کن.
-5. اگر برند مشخص نبود، بر اساس Part Number حدس حرفه‌ای بزن.
-6. برای هر قطعه توضیح فنی، کاربرد، وضعیت احتمالی، جایگزین احتمالی و ریسک فروش بده.
-7. مشتری را بر اساس سابقه خرید و درخواست‌ها امتیازدهی کن.
-8. فقط JSON خالص برگردان. هیچ متن اضافه‌ای قبل یا بعد JSON ننویس.
-
-اطلاعات مشتری:
-- نام مشتری: ${customer || "نامشخص"}
-- شماره RFQ: ${rfqNum || "نامشخص"}
-- یادداشت داخلی: ${notes || "ندارد"}
-
-سابقه مشتری:
-- سابقه خرید: ${pInfo}
-- سابقه درخواست‌ها: ${rInfo}
-
-متن کامل درخواست / ایمیل مشتری:
-"""
-${requestText}
-"""
-
-فرمت خروجی دقیقاً شبیه این باشد:
-{
-  "customerScore": 80,
-  "customerLevel": "VIP / Regular / New / Low Priority",
-  "dealValue": "بالا / متوسط / پایین",
-  "priority": "فوری / بالا / معمولی / پایین",
-  "summary": "خلاصه کوتاه از درخواست مشتری",
-  "extractedItemsCount": 3,
-  "parts": [
-    {
-      "partNumber": "6ES7314-6EH04-0AB0",
-      "qty": "2",
-      "manufacturer": "Siemens",
-      "description": "شرح فنی قطعه",
-      "application": "کاربرد احتمالی",
-      "status": "active",
-      "statusLabel": "موجود / توقف تولید / نیازمند بررسی",
-      "marketPrice": "تخمین قیمت یا بازه احتمالی اگر قابل حدس است",
-      "alternatives": "جایگزین پیشنهادی",
-      "eolNote": "اگر احتمال توقف تولید دارد توضیح بده"
-    }
-  ],
-  "recommendation": "توصیه عملی برای تیم فروش",
-  "risks": "ریسک‌های تامین، قیمت، فنی یا مشتری",
-  "nextStep": "قدم بعدی پیشنهادی"
-}
-`;
 }
 
 function Tag({ color, children }) {
@@ -209,7 +358,7 @@ function Tag({ color, children }) {
       padding: "3px 10px",
       borderRadius: 20,
       fontWeight: 600,
-      ...c[color]
+      ...c[color],
     }}>
       {children}
     </span>
@@ -218,16 +367,29 @@ function Tag({ color, children }) {
 
 function SBadge({ status }) {
   const m = {
-    active: { bg: "rgba(16,185,129,0.15)", color: "#34d399", label: "موجود" },
-    eol: { bg: "rgba(239,68,68,0.15)", color: "#f87171", label: "توقف تولید" },
-    warning: { bg: "rgba(245,158,11,0.15)", color: "#fbbf24", label: "احتیاط" },
+    active: {
+      bg: "rgba(16,185,129,0.15)",
+      color: "#34d399",
+      label: "Active",
+    },
+    eol: {
+      bg: "rgba(239,68,68,0.15)",
+      color: "#f87171",
+      label: "EOL",
+    },
+    warning: {
+      bg: "rgba(245,158,11,0.15)",
+      color: "#fbbf24",
+      label: "Check",
+    },
+    unknown: {
+      bg: "rgba(148,163,184,0.15)",
+      color: "#94a3b8",
+      label: "Unknown",
+    },
   };
 
-  const s = m[status] || {
-    bg: "rgba(148,163,184,0.15)",
-    color: "#94a3b8",
-    label: status || "نامشخص",
-  };
+  const s = m[status] || m.unknown;
 
   return (
     <span style={{
@@ -244,12 +406,23 @@ function SBadge({ status }) {
 }
 
 export default function App() {
-  const [files, setFiles] = useState({ purchase: null, req25: null, req26: null });
-  const [fileLabels, setFileLabels] = useState({ purchase: "", req25: "", req26: "" });
+  const [files, setFiles] = useState({
+    purchase: null,
+    req25: null,
+    req26: null,
+  });
+
+  const [fileLabels, setFileLabels] = useState({
+    purchase: "",
+    req25: "",
+    req26: "",
+  });
+
   const [customer, setCustomer] = useState("");
   const [rfqNum, setRfqNum] = useState("");
-  const [partsRaw, setPartsRaw] = useState("");
+  const [requestText, setRequestText] = useState("");
   const [notes, setNotes] = useState("");
+  const [extraCustomerInfo, setExtraCustomerInfo] = useState("");
   const [phase, setPhase] = useState("idle");
   const [steps, setSteps] = useState(STEPS.map(s => ({ ...s, state: "waiting" })));
   const [result, setResult] = useState(null);
@@ -261,7 +434,7 @@ export default function App() {
     setTimeout(() => setToast(""), 3500);
   };
 
-  const isReady = partsRaw.trim().length > 0;
+  const isReady = requestText.trim().length > 0;
 
   const loadFile = useCallback((e, key) => {
     const file = e.target.files[0];
@@ -280,7 +453,6 @@ export default function App() {
 
         setFiles(f => ({ ...f, [key]: rows }));
         setFileLabels(l => ({ ...l, [key]: `✓ ${rows.length} ردیف` }));
-
         showToast(`${file.name} بارگذاری شد`);
       } catch (err) {
         showToast("خطا: " + err.message);
@@ -296,21 +468,19 @@ export default function App() {
     try {
       const response = await fetch("/api/claude", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: MODEL_NAME,
           max_tokens: 20,
-          messages: [{ role: "user", content: "Only reply with this JSON: {\"ok\":true}" }],
+          messages: [{ role: "user", content: "Return only JSON: {\"ok\":true}" }],
         }),
       });
 
-      const text = await response.text();
+      const raw = await response.text();
 
       let data;
       try {
-        data = JSON.parse(text);
+        data = JSON.parse(raw);
       } catch {
         showToast("❌ API Route پاسخ JSON نداد");
         return;
@@ -328,7 +498,9 @@ export default function App() {
   };
 
   const setStepState = (id, st) => {
-    setSteps(prev => prev.map(s => s.id === id ? { ...s, state: st } : s));
+    setSteps(prev => prev.map(s => (
+      s.id === id ? { ...s, state: st } : s
+    )));
   };
 
   const startAnalysis = async () => {
@@ -339,17 +511,17 @@ export default function App() {
     setResult(null);
 
     setStepState("s1", "active");
-    await delay(400);
-    const purchase = analyzePurchase(files.purchase, customer);
+    await delay(300);
+    const requestStats = analyzeCustomerRequests(files.req25, files.req26, customer);
     setStepState("s1", "done");
 
     setStepState("s2", "active");
-    await delay(400);
-    const request = analyzeRequests(files.req25, files.req26, customer);
+    await delay(300);
+    const purchaseStats = analyzeCustomerPurchases(files.purchase, customer);
     setStepState("s2", "done");
 
     setStepState("s3", "active");
-    await delay(500);
+    await delay(300);
     setStepState("s3", "done");
 
     setStepState("s4", "active");
@@ -358,8 +530,16 @@ export default function App() {
 
     try {
       ai = await callClaude(
-        buildPrompt(customer, rfqNum, partsRaw, notes, purchase, request),
-        3000
+        buildPrompt({
+          customer,
+          rfqNum,
+          requestText,
+          notes,
+          extraCustomerInfo,
+          requestStats,
+          purchaseStats,
+        }),
+        2800
       );
 
       setStepState("s4", "done");
@@ -374,12 +554,10 @@ export default function App() {
     await delay(300);
     setStepState("s5", "done");
 
-    await delay(400);
-
     setResult({
       ai,
-      purchase,
-      request,
+      requestStats,
+      purchaseStats,
       parts: ai.parts || [],
       customer,
       rfqNum,
@@ -391,16 +569,33 @@ export default function App() {
   const copyReport = () => {
     if (!result) return;
 
-    const { ai, customer: c, rfqNum: r } = result;
+    const { ai, customer: c, rfqNum: r, requestStats, purchaseStats } = result;
 
     navigator.clipboard.writeText(
       `گزارش RFQ
 مشتری: ${c || "نامشخص"} | RFQ: ${r || "—"}
-امتیاز: ${ai.customerScore || "—"} | ${ai.customerLevel || "—"}
-ارزش: ${ai.dealValue || "—"} | اولویت: ${ai.priority || "—"}
+
+سوابق درخواست این مشتری:
+تعداد درخواست‌های این مشتری: ${requestStats.customerRequests}
+تعداد درخواست‌های فروش‌شده: ${requestStats.soldRequests}
+مبلغ درخواست‌های این مشتری: ${requestStats.requestAmount.toLocaleString()}
+نرخ تبدیل: ${requestStats.conversionRate}%
+کیفیت مشتری: ${requestStats.quality}
+
+سوابق خرید ثبت‌شده:
+تعداد خرید: ${purchaseStats.purchaseCount}
+مبلغ خرید: ${purchaseStats.purchaseAmount.toLocaleString()}
+
+امتیاز AI: ${ai.customerScore || "—"}
+سطح مشتری: ${ai.customerLevel || "—"}
+ارزش معامله: ${ai.dealValue || "—"}
+اولویت: ${ai.priority || "—"}
 
 خلاصه:
 ${ai.summary || "—"}
+
+بک‌گراند چک مشتری:
+${ai.customerBackgroundCheck || "—"}
 
 توصیه:
 ${ai.recommendation || "—"}
@@ -526,11 +721,7 @@ ${ai.nextStep || "—"}`
         alignItems: "center",
         justifyContent: "space-between",
       }}>
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{
             width: 34,
             height: 34,
@@ -543,6 +734,7 @@ ${ai.nextStep || "—"}`
           }}>
             ⚙️
           </div>
+
           <div>
             <div style={{ fontSize: 15, fontWeight: 700 }}>RFQ Analyzer Pro</div>
             <div style={{ fontSize: 11, color: "#64748b" }}>سیستم تحلیل هوشمند — Claude AI</div>
@@ -587,9 +779,9 @@ ${ai.nextStep || "—"}`
             gap: 12,
           }}>
             {[
-              { key: "purchase", label: "Purchase 2025", desc: "سوابق خرید", icon: "📊" },
-              { key: "req25", label: "Request 2025", desc: "درخواست‌های ۱۴۰۴", icon: "📋" },
-              { key: "req26", label: "Request 2026", desc: "درخواست‌های ۱۴۰۵", icon: "📋" },
+              { key: "purchase", label: "Purchase 2025", desc: "سوابق خرید", icon: "💰" },
+              { key: "req25", label: "Request 2025", desc: "درخواست‌ها", icon: "📋" },
+              { key: "req26", label: "Request 2026", desc: "درخواست‌ها", icon: "📋" },
             ].map(f => (
               <label key={f.key} style={{
                 background: bg3,
@@ -606,6 +798,7 @@ ${ai.nextStep || "—"}`
                   style={{ display: "none" }}
                   onChange={e => loadFile(e, f.key)}
                 />
+
                 <div style={{ fontSize: 24, marginBottom: 6 }}>{f.icon}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
                 <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>{f.desc}</div>
@@ -649,14 +842,14 @@ ${ai.nextStep || "—"}`
               <label style={lbl}>نام / شرکت مشتری</label>
               <input
                 style={{ ...inp, direction: "rtl" }}
-                placeholder="مثال: شرکت پترو کیمیا"
+                placeholder="مثال: Petro Kimia"
                 value={customer}
                 onChange={e => setCustomer(e.target.value)}
               />
             </div>
 
             <div>
-              <label style={lbl}>شماره RFQ</label>
+              <label style={lbl}>شماره RFQ / شناسه داخلی</label>
               <input
                 style={inp}
                 placeholder="RFQ-2026-0142"
@@ -670,32 +863,44 @@ ${ai.nextStep || "—"}`
               <textarea
                 style={{
                   ...inp,
-                  minHeight: 160,
+                  minHeight: 150,
                   resize: "vertical",
                   fontFamily: "monospace",
                   fontSize: 12,
                   direction: "ltr",
                   lineHeight: 1.6,
                 }}
-                placeholder={`مثال:
-Dear Sir,
+                placeholder={`Dear Sir,
 
-Please quote the below items:
+Please quote:
+Siemens 6ES7314-6EH04-0AB0 qty 2 pcs
+6ES7321-1BL00-0AA0 qty 5
+3RT2025-1AP00 qty 10
 
-1. Siemens PLC CPU 6ES7314-6EH04-0AB0 qty 2 pcs
-2. Digital Input Module 6ES7321-1BL00-0AA0 qty 5
-3. Contactor 3RT2025-1AP00 qty 10
-
-Please provide price, availability and delivery time.
-
-Best regards`}
-                value={partsRaw}
-                onChange={e => setPartsRaw(e.target.value)}
+Please send price for China and UAE.`}
+                value={requestText}
+                onChange={e => setRequestText(e.target.value)}
               />
             </div>
 
             <div style={{ gridColumn: "1/-1" }}>
-              <label style={lbl}>یادداشت داخلی (اختیاری)</label>
+              <label style={lbl}>اطلاعات تکمیلی مشتری / خریدهای ثبت‌نشده / نکات دستی</label>
+              <textarea
+                style={{
+                  ...inp,
+                  minHeight: 90,
+                  resize: "vertical",
+                  direction: "rtl",
+                  lineHeight: 1.7,
+                }}
+                placeholder="مثال: این مشتری قبلاً یک خرید موفق خارج از فایل داشته؛ پرداخت منظم بوده؛ پروژه فعلی فوری است."
+                value={extraCustomerInfo}
+                onChange={e => setExtraCustomerInfo(e.target.value)}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1/-1" }}>
+              <label style={lbl}>یادداشت داخلی این RFQ</label>
               <input
                 style={{ ...inp, direction: "rtl" }}
                 placeholder="مثال: فوری — پروژه پالایشگاه"
@@ -709,7 +914,9 @@ Best regards`}
             style={{
               width: "100%",
               padding: 13,
-              background: isReady && phase !== "running" ? "linear-gradient(135deg,#3b82f6,#6366f1)" : bg3,
+              background: isReady && phase !== "running"
+                ? "linear-gradient(135deg,#3b82f6,#6366f1)"
+                : bg3,
               color: isReady && phase !== "running" ? "#fff" : "#64748b",
               border: "none",
               borderRadius: 10,
@@ -778,13 +985,8 @@ Best regards`}
                   }`,
                   borderRadius: 8,
                   fontSize: 13,
-                  transition: "all 0.3s",
                 }}>
-                  <span style={{
-                    fontSize: 17,
-                    width: 24,
-                    textAlign: "center",
-                  }}>
+                  <span style={{ fontSize: 17, width: 24, textAlign: "center" }}>
                     {s.state === "active" ? "⏳" : s.state === "done" ? "✅" : s.state === "error" ? "❌" : s.icon}
                   </span>
 
@@ -813,9 +1015,9 @@ Best regards`}
         )}
 
         {phase === "done" && result && (() => {
-          const { ai, purchase, request, parts: pts, customer: cust, rfqNum: rfq } = result;
+          const { ai, requestStats, purchaseStats, parts: pts, customer: cust, rfqNum: rfq } = result;
           const sc = ai.customerScore || 50;
-          const itemCount = ai.extractedItemsCount || (ai.parts || pts || []).length || 0;
+          const itemCount = ai.extractedItemsCount || (pts || []).length || 0;
 
           return (
             <>
@@ -848,7 +1050,10 @@ Best regards`}
                 </div>
 
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>مشتری</div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>
+                    مشتری
+                  </div>
+
                   <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 4 }}>
                     {cust || "نامشخص"}
                   </div>
@@ -858,28 +1063,15 @@ Best regards`}
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Tag color="blue">{ai.customerLevel || "عادی"}</Tag>
-                    <Tag color="yellow">اولویت: {ai.priority || "معمولی"}</Tag>
-                    {purchase?.found && <Tag color="green">{purchase.count} بار خرید</Tag>}
-                    {request?.found && <Tag color="blue">نرخ تبدیل {request.conversionRate}%</Tag>}
+                    <Tag color="blue">{ai.customerLevel || "Regular"}</Tag>
+                    <Tag color="yellow">اولویت: {ai.priority || "Normal"}</Tag>
+                    <Tag color="green">{requestStats.quality}</Tag>
+                    {requestStats.conversionRate > 0 && (
+                      <Tag color="blue">نرخ تبدیل {requestStats.conversionRate}%</Tag>
+                    )}
                   </div>
                 </div>
               </div>
-
-              {ai.summary && (
-                <div style={{
-                  ...card,
-                  borderRight: "4px solid #3b82f6",
-                  fontSize: 13,
-                  lineHeight: 1.8,
-                  color: "#94a3b8",
-                }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                    📝 خلاصه درخواست
-                  </div>
-                  {ai.summary}
-                </div>
-              )}
 
               <div style={{
                 display: "grid",
@@ -890,65 +1082,93 @@ Best regards`}
                 <div style={card}>
                   <div style={{ ...secTitle, marginBottom: 10 }}>
                     <div style={bar} />
-                    📊 سابقه خرید
+                    📋 سوابق درخواست این مشتری
                   </div>
 
-                  {purchase?.found ? (
-                    <>
-                      <div style={mRow}>
-                        <span style={{ color: "#64748b" }}>تعداد خرید</span>
-                        <span style={{ fontWeight: 600, color: "#34d399" }}>{purchase.count} بار</span>
-                      </div>
-                      <div style={mRow}>
-                        <span style={{ color: "#64748b" }}>جمع مبالغ</span>
-                        <span style={{ fontWeight: 600, color: "#60a5fa" }}>
-                          {purchase.totalAmount ? purchase.totalAmount.toLocaleString() : "—"}
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 13, color: "#f59e0b" }}>
-                      {purchase?.found === false ? "مشتری جدید" : "فایل بارگذاری نشده"}
-                    </div>
-                  )}
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>کل درخواست‌های فایل‌ها</span>
+                    <span style={{ fontWeight: 600 }}>{requestStats.totalAllRequests}</span>
+                  </div>
+
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>درخواست‌های این مشتری</span>
+                    <span style={{ fontWeight: 600, color: "#60a5fa" }}>{requestStats.customerRequests}</span>
+                  </div>
+
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>درخواست‌های فروش‌شده</span>
+                    <span style={{ fontWeight: 600, color: "#34d399" }}>{requestStats.soldRequests}</span>
+                  </div>
+
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>مبلغ درخواست‌های این مشتری</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {requestStats.requestAmount ? requestStats.requestAmount.toLocaleString() : "—"}
+                    </span>
+                  </div>
+
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>کیفیت مشتری</span>
+                    <span style={{ fontWeight: 600, color: "#fbbf24" }}>{requestStats.quality}</span>
+                  </div>
                 </div>
 
                 <div style={card}>
                   <div style={{ ...secTitle, marginBottom: 10 }}>
                     <div style={bar} />
-                    📋 سابقه درخواست‌ها
+                    💰 سوابق خرید و اطلاعات تکمیلی
                   </div>
 
-                  {request?.found ? (
-                    <>
-                      <div style={mRow}>
-                        <span style={{ color: "#64748b" }}>کل درخواست‌ها</span>
-                        <span style={{ fontWeight: 600 }}>{request.totalRequests}</span>
-                      </div>
-                      <div style={mRow}>
-                        <span style={{ color: "#64748b" }}>تبدیل به خرید</span>
-                        <span style={{ fontWeight: 600, color: "#34d399" }}>{request.converted}</span>
-                      </div>
-                      <div style={mRow}>
-                        <span style={{ color: "#64748b" }}>نرخ تبدیل</span>
-                        <span style={{
-                          fontWeight: 600,
-                          color:
-                            request.conversionRate >= 50 ? "#34d399" :
-                            request.conversionRate >= 25 ? "#fbbf24" :
-                            "#f87171",
-                        }}>
-                          {request.conversionRate}%
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 13, color: "#f59e0b" }}>
-                      {request?.found === false ? "سابقه‌ای ندارد" : "فایل بارگذاری نشده"}
-                    </div>
-                  )}
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>تعداد خرید ثبت‌شده</span>
+                    <span style={{ fontWeight: 600, color: "#34d399" }}>{purchaseStats.purchaseCount}</span>
+                  </div>
+
+                  <div style={mRow}>
+                    <span style={{ color: "#64748b" }}>مبلغ خرید ثبت‌شده</span>
+                    <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                      {purchaseStats.purchaseAmount ? purchaseStats.purchaseAmount.toLocaleString() : "—"}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    fontSize: 12,
+                    color: "#94a3b8",
+                    lineHeight: 1.8,
+                    marginTop: 10,
+                  }}>
+                    {purchaseStats.background}
+                  </div>
                 </div>
               </div>
+
+              {(ai.summary || ai.customerBackgroundCheck) && (
+                <div style={{
+                  ...card,
+                  borderRight: "4px solid #3b82f6",
+                  fontSize: 13,
+                  lineHeight: 1.8,
+                  color: "#94a3b8",
+                }}>
+                  {ai.summary && (
+                    <>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                        📝 خلاصه درخواست
+                      </div>
+                      <div style={{ marginBottom: 12 }}>{ai.summary}</div>
+                    </>
+                  )}
+
+                  {ai.customerBackgroundCheck && (
+                    <>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                        🔎 بک‌گراند چک مشتری
+                      </div>
+                      <div>{ai.customerBackgroundCheck}</div>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div style={{ ...card, overflowX: "auto" }}>
                 <div style={{ ...secTitle, marginBottom: 12 }}>
@@ -959,7 +1179,7 @@ Best regards`}
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr>
-                      {["Part Number", "Qty", "سازنده", "شرح", "کاربرد", "وضعیت", "جایگزین", "قیمت"].map(h => (
+                      {["Part Number", "Qty", "سازنده", "شرح", "کاربرد", "وضعیت", "قیمت چین", "قیمت امارات", "جایگزین"].map(h => (
                         <th key={h} style={th}>{h}</th>
                       ))}
                     </tr>
@@ -985,8 +1205,9 @@ Best regards`}
                             </div>
                           )}
                         </td>
+                        <td style={td}>{p.priceChina || "—"}</td>
+                        <td style={td}>{p.priceUAE || "—"}</td>
                         <td style={{ ...td, color: "#94a3b8" }}>{p.alternatives || "—"}</td>
-                        <td style={td}>{p.marketPrice || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
