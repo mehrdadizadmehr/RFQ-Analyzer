@@ -12,6 +12,7 @@ import { callClaude, testClaudeConnection } from "./services/claude";
 import Tag from "./components/Tag";
 import SBadge from "./components/SBadge";
 import { formatMoney } from "./utils/numbers";
+import { calculateWinChance } from "./utils/winChance";
 
 export default function App() {
   const [files, setFiles] = useState({
@@ -115,6 +116,14 @@ export default function App() {
       files.purchase,
       requestText
     );
+
+    const winChance = calculateWinChance({
+      requestStats,
+      purchaseStats,
+      brandStats,
+      requestText,
+    });
+
     setStepState("s3", "done");
 
     setStepState("s4", "active");
@@ -134,6 +143,7 @@ export default function App() {
           requestStats,
           purchaseStats,
           brandStats,
+          winChance,
         }),
         3200
       );
@@ -158,6 +168,7 @@ export default function App() {
       parts: ai.parts || [],
       customer,
       rfqNum,
+      winChance,
     });
 
     setPhase("done");
@@ -166,7 +177,7 @@ export default function App() {
   const copyReport = () => {
     if (!result) return;
 
-    const { ai, customer: c, rfqNum: r, requestStats, purchaseStats } = result;
+    const { ai, customer: c, rfqNum: r, requestStats, purchaseStats, winChance } = result;
 
     navigator.clipboard
       .writeText(
@@ -176,17 +187,17 @@ export default function App() {
 سوابق درخواست این مشتری:
 تعداد درخواست‌های این مشتری: ${requestStats.customerRequests}
 تعداد درخواست‌های فروش‌شده: ${requestStats.soldRequests}
-مبلغ درخواست‌های این مشتری: ${formatMoney(requestStats.requestAmount)}
+ارزش فرصت‌های این مشتری: ${formatMoney(requestStats.requestAmount)}
 نرخ تبدیل: ${requestStats.conversionRate}%
 کیفیت مشتری: ${requestStats.quality}
 
-سوابق خرید ثبت‌شده:
+سوابق خرید واقعی:
 خریدهای فایل Purchase: ${purchaseStats.filePurchaseCount}
-مبلغ خرید فایل: ${formatMoney(purchaseStats.filePurchaseAmount)}
+مبلغ خرید واقعی از فایل Purchase: ${formatMoney(purchaseStats.filePurchaseAmount)}
 خریدهای جدید دستی: ${purchaseStats.manualPurchaseCount}
 مبلغ خریدهای جدید دستی: ${formatMoney(purchaseStats.manualPurchaseAmount)}
-جمع کل خرید: ${purchaseStats.totalPurchaseCount}
-مبلغ کل خرید: ${formatMoney(purchaseStats.totalPurchaseAmount)}
+جمع کل خرید واقعی ثبت‌شده: ${purchaseStats.totalPurchaseCount}
+مبلغ کل خرید واقعی ثبت‌شده: ${formatMoney(purchaseStats.totalPurchaseAmount)}
 
 امتیاز AI: ${ai.customerScore || "—"}
 سطح مشتری: ${ai.customerLevel || "—"}
@@ -194,8 +205,9 @@ export default function App() {
 اولویت: ${ai.priority || "—"}
 
 شانس برنده شدن:
-${ai.winChance?.score || "—"}% | ${ai.winChance?.level || "—"}
-${ai.winChance?.reasons || "—"}
+${winChance?.score || "—"}% | ${winChance?.level || "—"}
+معیارها:
+${(winChance?.factors || []).join("، ") || "—"}
 
 خلاصه:
 ${ai.summary || "—"}
@@ -730,11 +742,12 @@ Please send price for China and UAE.`}
               parts: pts,
               customer: cust,
               rfqNum: rfq,
+              winChance,
             } = result;
 
             const sc = ai.customerScore || 50;
             const itemCount = ai.extractedItemsCount || (pts || []).length || 0;
-            const winScore = ai.winChance?.score || 0;
+            const winScore = winChance?.score || 0;
 
             return (
               <>
@@ -830,7 +843,7 @@ Please send price for China and UAE.`}
                     </div>
 
                     <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>مبلغ درخواست‌های این مشتری</span>
+                      <span style={{ color: "#64748b" }}>ارزش فرصت‌های این مشتری</span>
                       <span style={{ fontWeight: 600 }}>
                         {formatMoney(requestStats.requestAmount)}
                       </span>
@@ -858,7 +871,7 @@ Please send price for China and UAE.`}
                     </div>
 
                     <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>مبلغ خرید فایل</span>
+                      <span style={{ color: "#64748b" }}>مبلغ خرید واقعی از فایل Purchase</span>
                       <span style={{ fontWeight: 600, color: "#60a5fa" }}>
                         {formatMoney(purchaseStats.filePurchaseAmount)}
                       </span>
@@ -879,7 +892,7 @@ Please send price for China and UAE.`}
                     </div>
 
                     <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>جمع کل خرید ثبت‌شده</span>
+                      <span style={{ color: "#64748b" }}>جمع کل خرید واقعی ثبت‌شده</span>
                       <span style={{ fontWeight: 600, color: "#34d399" }}>
                         {formatMoney(purchaseStats.totalPurchaseAmount)}
                       </span>
@@ -961,13 +974,17 @@ Please send price for China and UAE.`}
                     </div>
 
                     <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.8 }}>
-                      سطح: {ai.winChance?.level || "—"}
+                      سطح: {winChance?.level || "—"}
                       <br />
-                      دلایل: {ai.winChance?.reasons || "—"}
+                      معیارها: {(winChance?.factors || []).join("، ") || "—"}
                       <br />
-                      ریسک‌ها: {ai.winChance?.riskFactors || "—"}
+                      توضیح: {winChance?.explanation || "—"}
                       <br />
-                      افزایش شانس: {ai.winChance?.howToIncreaseChance || "—"}
+                      تحلیل AI: {ai.winChanceCommentary?.businessReasons || "—"}
+                      <br />
+                      ریسک‌ها: {ai.winChanceCommentary?.riskFactors || "—"}
+                      <br />
+                      افزایش شانس: {ai.winChanceCommentary?.howToIncreaseChance || "—"}
                     </div>
                   </div>
                 </div>

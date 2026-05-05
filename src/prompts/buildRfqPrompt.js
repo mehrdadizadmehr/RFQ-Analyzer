@@ -9,44 +9,49 @@ export function buildRfqPrompt({
   requestStats,
   purchaseStats,
   brandStats,
+  winChance,
 }) {
   return `
 Role: B2B RFQ analyst for industrial automation parts.
 Return only valid JSON. No markdown.
 
-Important:
+Rules:
+- JSON keys must stay English.
+- All explanations and values must be in Persian/Farsi, except part numbers, brands, and technical model names.
+- Do NOT calculate win chance score. It is already calculated by the app.
+- Use the provided win chance only and explain it in Persian.
 - Extract RFQ items from email.
 - Estimate China and UAE prices only.
+- Do not include any generic "marketPrice".
 - Company background must be AI-estimated from customer name/RFQ text only. Do not claim verified online search.
-- Analyze customer quality, product attractiveness, and win chance.
 - Keep answers concise.
 
-Input:
-customer=${customer || "unknown"}
+Customer:
+name=${customer || "unknown"}
 rfq=${rfqNum || "unknown"}
 notes=${notes || "none"}
 manual_note=${extraCustomerInfo || "none"}
 manual_new_purchase_count=${manualPurchaseCount || 0}
 manual_new_purchase_amount=${manualPurchaseAmount || 0}
 
-request_history:
-total_all_requests=${requestStats.totalAllRequests}
-customer_requests=${requestStats.customerRequests}
-sold_requests=${requestStats.soldRequests}
-customer_request_amount=${requestStats.requestAmount}
+Opportunity history from Request files:
+total_all_opportunities=${requestStats.totalAllRequests}
+customer_opportunities=${requestStats.customerRequests}
+sold_opportunities=${requestStats.soldRequests}
+customer_opportunity_value=${requestStats.requestAmount}
 conversion_rate=${requestStats.conversionRate}
-quality=${requestStats.quality}
-top_brands=${(requestStats.topBrands || []).join(", ") || "unknown"}
+customer_quality=${requestStats.quality}
+top_customer_brands=${(requestStats.topBrands || []).join(", ") || "unknown"}
 
-purchase_history:
+Actual purchase history:
 file_purchase_count=${purchaseStats.filePurchaseCount}
 file_purchase_amount=${purchaseStats.filePurchaseAmount}
 manual_purchase_count=${purchaseStats.manualPurchaseCount}
 manual_purchase_amount=${purchaseStats.manualPurchaseAmount}
-total_purchase_count=${purchaseStats.totalPurchaseCount}
-total_purchase_amount=${purchaseStats.totalPurchaseAmount}
+total_actual_purchase_count=${purchaseStats.totalPurchaseCount}
+total_actual_purchase_amount=${purchaseStats.totalPurchaseAmount}
 
-brand_product_stats:
+Brand/Product stats from uploaded files:
 top_brands_all=${(brandStats.topBrandsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 top_products_all=${(brandStats.topPartsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 mentioned_brand_count=${brandStats.mentionedBrandCount}
@@ -54,7 +59,13 @@ mentioned_product_count=${brandStats.mentionedProductCount}
 mentioned_brand_amount=${brandStats.mentionedBrandAmount}
 mentioned_product_amount=${brandStats.mentionedProductAmount}
 
-rfq_text:
+App-calculated win chance:
+score=${winChance.score}
+level=${winChance.level}
+factors=${(winChance.factors || []).join(" | ")}
+explanation=${winChance.explanation}
+
+RFQ/email text:
 """
 ${requestText}
 """
@@ -82,10 +93,9 @@ JSON schema:
     "repeatCountComment": "",
     "valueComment": ""
   },
-  "winChance": {
-    "score": 0,
-    "level": "High|Medium|Low",
-    "reasons": "",
+  "winChanceCommentary": {
+    "scoreComment": "",
+    "businessReasons": "",
     "riskFactors": "",
     "howToIncreaseChance": ""
   },
