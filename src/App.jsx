@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
-import { STEPS, delay } from "./constants/rfq";
-import { readExcelFile } from "./utils/excel";
+import { STEPS, delay, AUTO_EXCEL_FILES } from "./constants/rfq";
+import { readExcelFile, readExcelFromUrl } from "./utils/excel";
 import {
   analyzeCustomerRequests,
   analyzeCustomerPurchases,
@@ -47,6 +47,34 @@ export default function App() {
   };
 
   const isReady = requestText.trim().length > 0;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDefaultFiles() {
+      for (const item of AUTO_EXCEL_FILES) {
+        try {
+          const rows = await readExcelFromUrl(item.path);
+
+          if (cancelled) return;
+
+          setFiles(prev => ({ ...prev, [item.key]: rows }));
+          setFileLabels(prev => ({
+            ...prev,
+            [item.key]: `✓ ${rows.length} ردیف - Auto`,
+          }));
+        } catch (err) {
+          console.warn(`${item.label} auto-load failed:`, err.message);
+        }
+      }
+    }
+
+    loadDefaultFiles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadFile = useCallback(async (e, key) => {
     const file = e.target.files[0];
@@ -317,6 +345,23 @@ ${ai.nextStep || "—"}`
     verticalAlign: "top",
     lineHeight: 1.5,
     fontSize: 12,
+  };
+
+  const textBox = {
+    background: bg3,
+    border: `1px solid ${bdr}`,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 13,
+    lineHeight: 1.9,
+    color: "#94a3b8",
+    textAlign: "right",
+    direction: "rtl",
+  };
+
+  const divider = {
+    borderTop: `1px solid ${bdr}`,
+    margin: "10px 0",
   };
 
   return (
@@ -867,6 +912,8 @@ Please send price for China and UAE.`}
                         color: "#94a3b8",
                         lineHeight: 1.8,
                         marginTop: 10,
+                        direction: "rtl",
+                        textAlign: "right",
                       }}
                     >
                       {purchaseStats.background}
@@ -888,30 +935,35 @@ Please send price for China and UAE.`}
                       🏷️ تحلیل برند و محصول در فایل‌ها
                     </div>
 
-                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.8 }}>
-                      {brandStats?.summary || "—"}
-                    </div>
+                    <div style={textBox}>
+                      <div>{brandStats?.summary || "—"}</div>
 
-                    <div style={{ marginTop: 10, fontSize: 12, color: "#64748b" }}>
-                      برندهای پرتکرار:{" "}
-                      {(brandStats?.topBrandsAll || [])
-                        .map(x => `${x.name} (${x.count})`)
-                        .join("، ") || "—"}
-                    </div>
+                      <div style={divider} />
 
-                    <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>
-                      محصولات پرتکرار:{" "}
-                      {(brandStats?.topPartsAll || [])
-                        .map(x => `${x.name} (${x.count})`)
-                        .join("، ") || "—"}
-                    </div>
+                      <div>
+                        برندهای پرتکرار:
+                        <br />
+                        {(brandStats?.topBrandsAll || [])
+                          .map(x => `${x.name} (${x.count})`)
+                          .join("، ") || "—"}
+                      </div>
 
-                    <div style={{ marginTop: 12, color: "#94a3b8", fontSize: 13, lineHeight: 1.8 }}>
-                      {ai.brandProductReview?.brandAttractiveness || "—"}
-                      <br />
-                      {ai.brandProductReview?.productDemandSignal || "—"}
-                      <br />
-                      {ai.brandProductReview?.valueComment || "—"}
+                      <div style={divider} />
+
+                      <div>
+                        محصولات پرتکرار:
+                        <br />
+                        {(brandStats?.topPartsAll || [])
+                          .map(x => `${x.name} (${x.count})`)
+                          .join("، ") || "—"}
+                      </div>
+
+                      <div style={divider} />
+
+                      <div>{ai.brandProductReview?.brandAttractiveness || "—"}</div>
+                      <div>{ai.brandProductReview?.productDemandSignal || "—"}</div>
+                      <div>{ai.brandProductReview?.valueComment || "—"}</div>
+                      <div>{ai.brandProductReview?.similarPurchaseEvidence || "—"}</div>
                     </div>
                   </div>
 
@@ -921,35 +973,46 @@ Please send price for China and UAE.`}
                       🎯 شانس برنده شدن پیشنهاد
                     </div>
 
-                    <div
-                      style={{
-                        fontSize: 28,
-                        fontWeight: 700,
-                        color:
-                          winScore >= 65
-                            ? "#34d399"
-                            : winScore >= 40
-                              ? "#fbbf24"
-                              : "#f87171",
-                      }}
-                    >
-                      {winScore || "—"}%
-                    </div>
+                    <div style={textBox}>
+                      <div
+                        style={{
+                          fontSize: 28,
+                          fontWeight: 700,
+                          color:
+                            winScore >= 65
+                              ? "#34d399"
+                              : winScore >= 40
+                                ? "#fbbf24"
+                                : "#f87171",
+                        }}
+                      >
+                        {winScore || "—"}%
+                      </div>
 
-                    <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.9 }}>
+                      <div style={divider} />
+
                       <div>سطح: {winChance?.level || "—"}</div>
-                      <div style={{ marginTop: 6 }}>
+
+                      <div style={divider} />
+
+                      <div>
                         معیارهای اصلی:
                         <br />
                         {(winChance?.factors || []).slice(0, 4).map((f, i) => (
                           <span key={i}>• {f}<br /></span>
                         ))}
                       </div>
-                      <div style={{ marginTop: 6, color: "#64748b" }}>
-                        {winChance?.explanation || "—"}
-                      </div>
-                      <div style={{ marginTop: 8 }}>
-                        راه افزایش شانس: {ai.winChanceCommentary?.howToIncreaseChance || "—"}
+
+                      <div style={divider} />
+
+                      <div>{winChance?.explanation || "—"}</div>
+
+                      <div style={divider} />
+
+                      <div>
+                        راه افزایش شانس:
+                        <br />
+                        {ai.winChanceCommentary?.howToIncreaseChance || "—"}
                       </div>
                     </div>
                   </div>
@@ -960,40 +1023,43 @@ Please send price for China and UAE.`}
                     style={{
                       ...card,
                       borderRight: "4px solid #3b82f6",
-                      fontSize: 13,
-                      lineHeight: 1.8,
-                      color: "#94a3b8",
                     }}
                   >
-                    {ai.summary && (
-                      <>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                          📝 خلاصه درخواست
-                        </div>
-                        <div style={{ marginBottom: 12 }}>{ai.summary}</div>
-                      </>
-                    )}
+                    <div style={textBox}>
+                      {ai.summary && (
+                        <>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                            📝 خلاصه درخواست
+                          </div>
+                          <div>{ai.summary}</div>
+                          <div style={divider} />
+                        </>
+                      )}
 
-                    {ai.companyBackground && (
-                      <>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                          🔎 بک‌گراند چک شرکت
-                        </div>
-                        <div>اندازه شرکت: {ai.companyBackground.companySize || "—"}</div>
-                        <div>حوزه فعالیت: {ai.companyBackground.industry || "—"}</div>
-                        <div>جغرافیا: {ai.companyBackground.geography || "—"}</div>
-                        <div>نوع شرکت: {ai.companyBackground.companyType || "—"}</div>
-                        <div>اطمینان: {ai.companyBackground.confidence || "low"}</div>
-                        <div style={{ color: "#64748b", marginTop: 8 }}>
-                          {ai.companyBackground.note ||
-                            "این بخش بدون وب‌سرچ واقعی و بر اساس نام/متن RFQ تخمین زده شده است."}
-                        </div>
-                      </>
-                    )}
+                      {ai.companyBackground && (
+                        <>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                            🔎 بک‌گراند چک شرکت
+                          </div>
+                          <div>اندازه شرکت: {ai.companyBackground.companySize || "—"}</div>
+                          <div>حوزه فعالیت: {ai.companyBackground.industry || "—"}</div>
+                          <div>جغرافیا: {ai.companyBackground.geography || "—"}</div>
+                          <div>نوع شرکت: {ai.companyBackground.companyType || "—"}</div>
+                          <div>اطمینان: {ai.companyBackground.confidence || "low"}</div>
+                          <div style={{ color: "#64748b", marginTop: 8 }}>
+                            {ai.companyBackground.note ||
+                              "این بخش بدون وب‌سرچ واقعی و بر اساس نام/متن RFQ تخمین زده شده است."}
+                          </div>
+                        </>
+                      )}
 
-                    {ai.customerBackgroundCheck && (
-                      <div style={{ marginTop: 12 }}>{ai.customerBackgroundCheck}</div>
-                    )}
+                      {ai.customerBackgroundCheck && (
+                        <>
+                          <div style={divider} />
+                          <div>{ai.customerBackgroundCheck}</div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -1009,13 +1075,14 @@ Please send price for China and UAE.`}
                         {[
                           "Part Number",
                           "Qty",
-                          "سازنده",
-                          "شرح",
-                          "کاربرد",
-                          "وضعیت",
-                          "قیمت چین",
-                          "قیمت امارات",
-                          "جایگزین",
+                          "Manufacturer",
+                          "Category",
+                          "Description",
+                          "Application",
+                          "Status",
+                          "China Price",
+                          "UAE Price",
+                          "Alternative",
                         ].map(h => (
                           <th key={h} style={th}>
                             {h}
@@ -1034,6 +1101,7 @@ Please send price for China and UAE.`}
                           </td>
                           <td style={td}>{p.qty || "—"}</td>
                           <td style={td}>{p.manufacturer || "—"}</td>
+                          <td style={td}>{p.category || "—"}</td>
                           <td style={td}>{p.description || "—"}</td>
                           <td style={td}>{p.application || "—"}</td>
                           <td style={td}>
@@ -1065,18 +1133,20 @@ Please send price for China and UAE.`}
                         fontSize: 13,
                         lineHeight: 1.9,
                         color: "#94a3b8",
+                        direction: "ltr",
+                        textAlign: "left",
                       }}
                     >
                       <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                        توضیح ساده کاربرد قطعات
+                        Simple Application Notes
                       </div>
 
                       {(ai.parts || []).map((p, i) => (
                         <div key={i} style={{ marginBottom: 8 }}>
                           <strong style={{ color: "#60a5fa" }}>
-                            {p.partNumber || `آیتم ${i + 1}`}:
+                            {p.partNumber || `Item ${i + 1}`}:
                           </strong>{" "}
-                          {p.application || p.description || "کاربرد دقیق این قطعه نیازمند بررسی بیشتر است."}
+                          {p.application || p.description || "Application needs further technical review."}
                         </div>
                       ))}
                     </div>
@@ -1091,18 +1161,21 @@ Please send price for China and UAE.`}
                     borderRadius: 14,
                     padding: 20,
                     marginBottom: 16,
-                    fontSize: 13,
-                    lineHeight: 1.8,
-                    color: "#94a3b8",
                   }}
                 >
                   <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 10 }}>
                     💡 توصیه تیم فروش
                   </div>
 
-                  <div style={{ marginBottom: 6 }}>{ai.recommendation || "—"}</div>
-                  <div style={{ marginBottom: 6, color: "#64748b" }}>{ai.risks || "—"}</div>
-                  <div style={{ color: "#60a5fa", fontWeight: 600 }}>{ai.nextStep || "—"}</div>
+                  <div style={textBox}>
+                    <div>{ai.recommendation || "—"}</div>
+                    <div style={divider} />
+                    <div>{ai.risks || "—"}</div>
+                    <div style={divider} />
+                    <div style={{ color: "#60a5fa", fontWeight: 600 }}>
+                      {ai.nextStep || "—"}
+                    </div>
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 12 }}>
