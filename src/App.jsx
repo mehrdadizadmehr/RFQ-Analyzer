@@ -56,13 +56,11 @@ function analyzeRequests(rows25, rows26, customer) {
   };
 }
 
-async function callClaude(apiKey, prompt) {
+async function callClaude(prompt) {
   const response = await fetch("/api/claude", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
@@ -70,17 +68,20 @@ async function callClaude(apiKey, prompt) {
       messages: [{ role: "user", content: prompt }],
     }),
   });
+
   if (!response.ok) {
     const err = await response.json();
     throw new Error(err.error?.message || "HTTP " + response.status);
   }
+
   const data = await response.json();
   const text = data.content.map(c => c.text || "").join("");
   const jsonMatch = text.match(/\{[\s\S]*\}/);
+
   if (!jsonMatch) throw new Error("فرمت پاسخ نامعتبر");
+
   return JSON.parse(jsonMatch[0]);
 }
-
 function buildPrompt(customer, rfqNum, parts, notes, purchase, request) {
   const pInfo = purchase?.found
     ? `${purchase.count} بار خرید قبلی، جمع: ${purchase.totalAmount.toLocaleString()}`
@@ -123,7 +124,7 @@ export default function App() {
   const [apiTested, setApiTested] = useState(false);
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(""),3500); };
-  const isReady = apiKey.startsWith("sk-ant") && partsRaw.trim().length > 0;
+  const isReady = partsRaw.trim().length > 0;
 
 const loadFile = useCallback((e, key) => {
   const file = e.target.files[0]; 
@@ -202,7 +203,7 @@ const testApi = async () => {
     setStepState("s4","active");
     let ai;
     try {
-      ai = await callClaude(apiKey, buildPrompt(customer,rfqNum,parts,notes,purchase,request));
+      ai = await callClaude(buildPrompt(customer,rfqNum,parts,notes,purchase,request));
       setStepState("s4","done");
     } catch(err){ setStepState("s4","error"); setPhase("error"); showToast("خطا: "+err.message); return; }
     setStepState("s5","active"); await delay(300); setStepState("s5","done");
