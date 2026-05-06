@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 
 import { STEPS, delay, AUTO_EXCEL_FILES } from "./constants/rfq";
+import { AI_PROVIDERS, DEFAULT_SELECTED_PROVIDERS } from "./constants/providers";
 import { readExcelFile, readExcelFromUrl } from "./utils/excel";
 import {
   analyzeCustomerRequests,
@@ -9,6 +10,7 @@ import {
 import { analyzeBrandProductStats } from "./utils/brandProductAnalysis";
 import { buildRfqPrompt } from "./prompts/buildRfqPrompt";
 import { callClaude, testClaudeConnection } from "./services/claude";
+import { callOpenAI, testOpenAIConnection } from "./services/openai";
 import Tag from "./components/Tag";
 import SBadge from "./components/SBadge";
 import { formatMoney } from "./utils/numbers";
@@ -35,11 +37,15 @@ export default function App() {
   const [manualPurchaseCount, setManualPurchaseCount] = useState("");
   const [manualPurchaseAmount, setManualPurchaseAmount] = useState("");
 
+  const [selectedProviders, setSelectedProviders] = useState(DEFAULT_SELECTED_PROVIDERS);
   const [phase, setPhase] = useState("idle");
   const [steps, setSteps] = useState(STEPS.map(s => ({ ...s, state: "waiting" })));
   const [result, setResult] = useState(null);
   const [toast, setToast] = useState("");
-  const [apiTested, setApiTested] = useState(false);
+  const [apiTested, setApiTested] = useState({
+    claude: false,
+    openai: false,
+  });
 
   const showToast = msg => {
     setToast(msg);
@@ -47,6 +53,7 @@ export default function App() {
   };
 
   const isReady = requestText.trim().length > 0;
+  const hasSelectedProvider = selectedProviders.claude || selectedProviders.openai;
 
   useEffect(() => {
     let cancelled = false;
@@ -92,13 +99,33 @@ export default function App() {
     }
   }, []);
 
-  const testApi = async () => {
-    showToast("در حال تست اتصال...");
+  const toggleProvider = key => {
+    setSelectedProviders(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+
+      if (!next.claude && !next.openai) {
+        showToast("حداقل یک AI باید انتخاب شود.");
+        return prev;
+      }
+
+      return next;
+    });
+  };
+
+  const testApi = async providerKey => {
+    showToast(`در حال تست اتصال ${AI_PROVIDERS[providerKey].label}...`);
 
     try {
-      await testClaudeConnection();
-      setApiTested(true);
-      showToast("✅ اتصال موفق!");
+      if (providerKey === "claude") {
+        await testClaudeConnection();
+      }
+
+      if (providerKey === "openai") {
+        await testOpenAIConnection();
+      }
+
+      setApiTested(prev => ({ ...prev, [providerKey]: true }));
+      showToast(`✅ اتصال ${AI_PROVIDERS[providerKey].label} موفق بود.`);
     } catch (e) {
       showToast("❌ " + e.message);
     }
@@ -111,7 +138,7 @@ export default function App() {
   };
 
   const startAnalysis = async () => {
-    if (!isReady) return;
+    if (!isReady || !hasSelectedProvider) return;
 
     setPhase("running");
     setSteps(STEPS.map(s => ({ ...s, state: "waiting" })));
@@ -156,25 +183,59 @@ export default function App() {
 
     setStepState("s4", "active");
 
-    let ai;
+    const prompt = buildRfqPrompt({
+      customer,
+      rfqNum,
+      requestText,
+      notes,
+      extraCustomerInfo,
+      manualPurchaseCount,
+      manualPurchaseAmount,
+      requestStats,
+      purchaseStats,
+      brandStats,
+      winChance,
+    });
+
+    const aiResults = {};
+    const errors = {};
 
     try {
-      ai = await callClaude(
-        buildRfqPrompt({
-          customer,
-          rfqNum,
-          requestText,
-          notes,
-          extraCustomerInfo,
-          manualPurchaseCount,
-          manualPurchaseAmount,
-          requestStats,
-          purchaseStats,
-          brandStats,
-          winChance,
-        }),
-        3200
-      );
+      const jobs = [];
+
+      if (selectedProviders.claude) {
+        jobs.push(
+          callClaude(prompt, 3200)
+            .then(data => {
+              aiResults.claude = data;
+            })
+            .catch(err => {
+              errors.claude = err.message;
+            })
+        );
+      }
+
+      if (selectedProviders.openai) {
+        jobs.push(
+          callOpenAI(prompt, 3200)
+            .then(data => {
+              aiResults.openai = data;
+            })
+            .catch(err => {
+              errors.openai = err.message;
+            })
+        );
+      }
+
+      await Promise.all(jobs);
+
+      if (!aiResults.claude && !aiResults.openai) {
+        throw new Error(
+          Object.entries(errors)
+            .map(([k, v]) => `${AI_PROVIDERS[k].label}: ${v}`)
+            .join(" | ")
+        );
+      }
 
       setStepState("s4", "done");
     } catch (err) {
@@ -188,12 +249,16 @@ export default function App() {
     await delay(300);
     setStepState("s5", "done");
 
+    const primaryAi = aiResults.claude || aiResults.openai;
+
     setResult({
-      ai,
+      ai: primaryAi,
+      aiResults,
+      errors,
       requestStats,
       purchaseStats,
       brandStats,
-      parts: ai.parts || [],
+      parts: primaryAi?.parts || [],
       customer,
       rfqNum,
       winChance,
@@ -205,7 +270,34 @@ export default function App() {
   const copyReport = () => {
     if (!result) return;
 
-    const { ai, customer: c, rfqNum: r, requestStats, purchaseStats, winChance } = result;
+    const { customer: c, rfqNum: r, requestStats, purchaseStats, winChance, aiResults } = result;
+
+    const providerReports = Object.entries(aiResults || {})
+      .map(([key, ai]) => {
+        return `
+--- ${AI_PROVIDERS[key]?.label || key} ---
+امتیاز AI: ${ai.customerScore || "—"}
+سطح مشتری: ${ai.customerLevel || "—"}
+ارزش معامله: ${ai.dealValue || "—"}
+اولویت: ${ai.priority || "—"}
+
+خلاصه:
+${ai.summary || "—"}
+
+بک‌گراند چک مشتری:
+${ai.customerBackgroundCheck || "—"}
+
+توصیه:
+${ai.recommendation || "—"}
+
+ریسک‌ها:
+${ai.risks || "—"}
+
+قدم بعدی:
+${ai.nextStep || "—"}
+`;
+      })
+      .join("\n");
 
     navigator.clipboard
       .writeText(
@@ -227,30 +319,12 @@ export default function App() {
 جمع کل خرید واقعی ثبت‌شده: ${purchaseStats.totalPurchaseCount}
 مبلغ کل خرید واقعی ثبت‌شده: ${formatMoney(purchaseStats.totalPurchaseAmount)}
 
-امتیاز AI: ${ai.customerScore || "—"}
-سطح مشتری: ${ai.customerLevel || "—"}
-ارزش معامله: ${ai.dealValue || "—"}
-اولویت: ${ai.priority || "—"}
-
 شانس برنده شدن:
 ${winChance?.score || "—"}% | ${winChance?.level || "—"}
 معیارها:
 ${(winChance?.factors || []).join("، ") || "—"}
 
-خلاصه:
-${ai.summary || "—"}
-
-بک‌گراند چک مشتری:
-${ai.customerBackgroundCheck || "—"}
-
-توصیه:
-${ai.recommendation || "—"}
-
-ریسک‌ها:
-${ai.risks || "—"}
-
-قدم بعدی:
-${ai.nextStep || "—"}`
+${providerReports}`
       )
       .then(() => showToast("✅ کپی شد"));
   };
@@ -364,6 +438,438 @@ ${ai.nextStep || "—"}`
     margin: "10px 0",
   };
 
+  const renderAiResult = (providerKey, ai, shared) => {
+    const { requestStats, purchaseStats, brandStats, winChance, parts } = shared;
+    const sc = ai.customerScore || 50;
+    const itemCount = ai.extractedItemsCount || (parts || ai.parts || []).length || 0;
+    const winScore = winChance?.score || 0;
+
+    return (
+      <div key={providerKey} style={{ marginBottom: 26 }}>
+        <div style={{ ...card, borderRight: providerKey === "claude" ? "4px solid #8b5cf6" : "4px solid #10b981" }}>
+          <div style={{ ...secTitle, marginBottom: 10 }}>
+            <div style={bar} />
+            خروجی {AI_PROVIDERS[providerKey]?.label || providerKey}
+          </div>
+
+          <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+            <div
+              style={{
+                width: 84,
+                height: 84,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 24,
+                fontWeight: 700,
+                flexShrink: 0,
+                background:
+                  sc >= 70
+                    ? "rgba(16,185,129,0.15)"
+                    : sc >= 40
+                      ? "rgba(245,158,11,0.15)"
+                      : "rgba(239,68,68,0.15)",
+                color: sc >= 70 ? "#34d399" : sc >= 40 ? "#fbbf24" : "#f87171",
+                border: `2px solid ${sc >= 70 ? "#10b981" : sc >= 40 ? "#f59e0b" : "#ef4444"}`,
+              }}
+            >
+              {sc}
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>مشتری</div>
+
+              <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 4 }}>
+                {result.customer || "نامشخص"}
+              </div>
+
+              <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 8 }}>
+                RFQ: {result.rfqNum || "—"} | {itemCount} آیتم استخراج‌شده | ارزش:{" "}
+                {ai.dealValue || "—"} | شانس برد: {winScore || "—"}%
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Tag color="blue">{ai.customerLevel || "Regular"}</Tag>
+                <Tag color="yellow">اولویت: {ai.priority || "Normal"}</Tag>
+                <Tag color="green">{requestStats.quality}</Tag>
+                {winScore > 0 && (
+                  <Tag color={winScore >= 65 ? "green" : winScore >= 40 ? "yellow" : "red"}>
+                    Win Chance: {winScore}%
+                  </Tag>
+                )}
+                {requestStats.conversionRate > 0 && (
+                  <Tag color="blue">نرخ تبدیل {requestStats.conversionRate}%</Tag>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 14,
+            marginBottom: 14,
+          }}
+        >
+          <div style={card}>
+            <div style={{ ...secTitle, marginBottom: 10 }}>
+              <div style={bar} />
+              📋 سوابق فرصت‌های این مشتری
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>کل فرصت‌های فایل‌ها</span>
+              <span style={{ fontWeight: 600 }}>{requestStats.totalAllRequests}</span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>فرصت‌های این مشتری</span>
+              <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                {requestStats.customerRequests}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>فرصت‌های فروش‌شده</span>
+              <span style={{ fontWeight: 600, color: "#34d399" }}>
+                {requestStats.soldRequests}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>ارزش فرصت‌های این مشتری</span>
+              <span style={{ fontWeight: 600 }}>
+                {formatMoney(requestStats.requestAmount)}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>کیفیت مشتری</span>
+              <span style={{ fontWeight: 600, color: "#fbbf24" }}>
+                {requestStats.quality}
+              </span>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={{ ...secTitle, marginBottom: 10 }}>
+              <div style={bar} />
+              💰 سوابق خرید واقعی
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>جمع کل خرید واقعی ثبت‌شده</span>
+              <span style={{ fontWeight: 700, color: "#34d399" }}>
+                {purchaseStats.totalPurchaseCount} خرید / {formatMoney(purchaseStats.totalPurchaseAmount)}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>خریدهای فایل Purchase</span>
+              <span style={{ fontWeight: 600, color: "#34d399" }}>
+                {purchaseStats.filePurchaseCount}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>مبلغ خرید واقعی از فایل Purchase</span>
+              <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                {formatMoney(purchaseStats.filePurchaseAmount)}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>خریدهای جدید دستی</span>
+              <span style={{ fontWeight: 600, color: "#34d399" }}>
+                {purchaseStats.manualPurchaseCount}
+              </span>
+            </div>
+
+            <div style={mRow}>
+              <span style={{ color: "#64748b" }}>مبلغ خریدهای جدید دستی</span>
+              <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                {formatMoney(purchaseStats.manualPurchaseAmount)}
+              </span>
+            </div>
+
+            <div
+              style={{
+                fontSize: 12,
+                color: "#94a3b8",
+                lineHeight: 1.8,
+                marginTop: 10,
+                direction: "rtl",
+                textAlign: "right",
+              }}
+            >
+              {purchaseStats.background}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 14,
+            marginBottom: 14,
+          }}
+        >
+          <div style={card}>
+            <div style={{ ...secTitle, marginBottom: 10 }}>
+              <div style={bar} />
+              🏷️ تحلیل برند و محصول در فایل‌ها
+            </div>
+
+            <div style={textBox}>
+              <div>{brandStats?.summary || "—"}</div>
+
+              <div style={divider} />
+
+              <div>
+                برندهای پرتکرار:
+                <br />
+                {(brandStats?.topBrandsAll || [])
+                  .map(x => `${x.name} (${x.count})`)
+                  .join("، ") || "—"}
+              </div>
+
+              <div style={divider} />
+
+              <div>
+                محصولات پرتکرار:
+                <br />
+                {(brandStats?.topPartsAll || [])
+                  .map(x => `${x.name} (${x.count})`)
+                  .join("، ") || "—"}
+              </div>
+
+              <div style={divider} />
+
+              <div>{ai.brandProductReview?.brandAttractiveness || "—"}</div>
+              <div>{ai.brandProductReview?.productDemandSignal || "—"}</div>
+              <div>{ai.brandProductReview?.valueComment || "—"}</div>
+              <div>{ai.brandProductReview?.similarPurchaseEvidence || "—"}</div>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={{ ...secTitle, marginBottom: 10 }}>
+              <div style={bar} />
+              🎯 شانس برنده شدن پیشنهاد
+            </div>
+
+            <div style={textBox}>
+              <div
+                style={{
+                  fontSize: 28,
+                  fontWeight: 700,
+                  color:
+                    winScore >= 65
+                      ? "#34d399"
+                      : winScore >= 40
+                        ? "#fbbf24"
+                        : "#f87171",
+                }}
+              >
+                {winScore || "—"}%
+              </div>
+
+              <div style={divider} />
+
+              <div>سطح: {winChance?.level || "—"}</div>
+
+              <div style={divider} />
+
+              <div>
+                معیارهای اصلی:
+                <br />
+                {(winChance?.factors || []).slice(0, 4).map((f, i) => (
+                  <span key={i}>• {f}<br /></span>
+                ))}
+              </div>
+
+              <div style={divider} />
+
+              <div>{winChance?.explanation || "—"}</div>
+
+              <div style={divider} />
+
+              <div>
+                راه افزایش شانس:
+                <br />
+                {ai.winChanceCommentary?.howToIncreaseChance || "—"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {(ai.summary || ai.customerBackgroundCheck || ai.companyBackground) && (
+          <div
+            style={{
+              ...card,
+              borderRight: "4px solid #3b82f6",
+            }}
+          >
+            <div style={textBox}>
+              {ai.summary && (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                    📝 خلاصه درخواست
+                  </div>
+                  <div>{ai.summary}</div>
+                  <div style={divider} />
+                </>
+              )}
+
+              {ai.companyBackground && (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                    🔎 بک‌گراند چک شرکت
+                  </div>
+                  <div>اندازه شرکت: {ai.companyBackground.companySize || "—"}</div>
+                  <div>حوزه فعالیت: {ai.companyBackground.industry || "—"}</div>
+                  <div>جغرافیا: {ai.companyBackground.geography || "—"}</div>
+                  <div>نوع شرکت: {ai.companyBackground.companyType || "—"}</div>
+                  <div>اطمینان: {ai.companyBackground.confidence || "low"}</div>
+                  <div style={{ color: "#64748b", marginTop: 8 }}>
+                    {ai.companyBackground.note ||
+                      "این بخش بدون وب‌سرچ واقعی و بر اساس نام/متن RFQ تخمین زده شده است."}
+                  </div>
+                </>
+              )}
+
+              {ai.customerBackgroundCheck && (
+                <>
+                  <div style={divider} />
+                  <div>{ai.customerBackgroundCheck}</div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div style={{ ...card, overflowX: "auto" }}>
+          <div style={{ ...secTitle, marginBottom: 12 }}>
+            <div style={bar} />
+            ⚙️ تحلیل قطعات استخراج‌شده
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                {[
+                  "Part Number",
+                  "Qty",
+                  "Manufacturer",
+                  "Category",
+                  "Description",
+                  "Application",
+                  "Status",
+                  "China Price",
+                  "UAE Price",
+                  "Alternative",
+                ].map(h => (
+                  <th key={h} style={th}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {(ai.parts || []).map((p, i) => (
+                <tr key={i}>
+                  <td style={td}>
+                    <code style={{ color: "#60a5fa", fontSize: 11 }}>
+                      {p.partNumber || "—"}
+                    </code>
+                  </td>
+                  <td style={td}>{p.qty || "—"}</td>
+                  <td style={td}>{p.manufacturer || "—"}</td>
+                  <td style={td}>{p.category || "—"}</td>
+                  <td style={td}>{p.description || "—"}</td>
+                  <td style={td}>{p.application || "—"}</td>
+                  <td style={td}>
+                    <SBadge status={p.status} />
+                    {p.eolNote && (
+                      <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                        {p.eolNote}
+                      </div>
+                    )}
+                  </td>
+                  <td style={td}>{p.priceChina || "—"}</td>
+                  <td style={td}>{p.priceUAE || "—"}</td>
+                  <td style={{ ...td, color: "#94a3b8" }}>
+                    {p.alternatives || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {(ai.parts || []).length > 0 && (
+            <div
+              style={{
+                marginTop: 16,
+                background: bg3,
+                border: `1px solid ${bdr}`,
+                borderRadius: 10,
+                padding: 14,
+                fontSize: 13,
+                lineHeight: 1.9,
+                color: "#94a3b8",
+                direction: "ltr",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                Simple Application Notes
+              </div>
+
+              {(ai.parts || []).map((p, i) => (
+                <div key={i} style={{ marginBottom: 8 }}>
+                  <strong style={{ color: "#60a5fa" }}>
+                    {p.partNumber || `Item ${i + 1}`}:
+                  </strong>{" "}
+                  {p.application || p.description || "Application needs further technical review."}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            background: bg2,
+            border: `1px solid ${bdr}`,
+            borderRight: "4px solid #3b82f6",
+            borderRadius: 14,
+            padding: 20,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 10 }}>
+            💡 توصیه تیم فروش
+          </div>
+
+          <div style={textBox}>
+            <div>{ai.recommendation || "—"}</div>
+            <div style={divider} />
+            <div>{ai.risks || "—"}</div>
+            <div style={divider} />
+            <div style={{ color: "#60a5fa", fontWeight: 600 }}>
+              {ai.nextStep || "—"}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       style={{
@@ -411,7 +917,7 @@ ${ai.nextStep || "—"}`
               RFQ Analyzer Pro
             </div>
             <div style={{ fontSize: 11, color: "#64748b" }}>
-              سیستم تحلیل هوشمند — Claude AI
+              سیستم تحلیل هوشمند — Claude AI + ChatGPT
             </div>
           </div>
         </div>
@@ -422,10 +928,10 @@ ${ai.nextStep || "—"}`
             padding: "3px 12px",
             borderRadius: 20,
             background:
-              isReady && apiTested
+              isReady && hasSelectedProvider
                 ? "rgba(16,185,129,0.15)"
                 : "rgba(100,116,139,0.15)",
-            color: isReady && apiTested ? "#34d399" : "#94a3b8",
+            color: isReady && hasSelectedProvider ? "#34d399" : "#94a3b8",
             display: "flex",
             alignItems: "center",
             gap: 6,
@@ -436,11 +942,11 @@ ${ai.nextStep || "—"}`
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: isReady && apiTested ? "#34d399" : "#64748b",
+              background: isReady && hasSelectedProvider ? "#34d399" : "#64748b",
               display: "inline-block",
             }}
           />
-          {isReady && apiTested ? "آماده تحلیل" : "در انتظار تنظیمات"}
+          {isReady && hasSelectedProvider ? "آماده تحلیل" : "در انتظار تنظیمات"}
         </div>
       </div>
 
@@ -448,7 +954,7 @@ ${ai.nextStep || "—"}`
         <div style={card}>
           <div style={secTitle}>
             <div style={bar} />
-            تنظیمات — فایل‌ها و اتصال API
+            تنظیمات — فایل‌ها و مدل‌های AI
           </div>
 
           <div
@@ -494,20 +1000,48 @@ ${ai.nextStep || "—"}`
 
           <div
             style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: 14,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              marginTop: 16,
             }}
           >
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              کلید API از Vercel Environment Variable خوانده می‌شود.
-            </div>
+            {Object.values(AI_PROVIDERS).map(provider => (
+              <div
+                key={provider.key}
+                style={{
+                  background: bg3,
+                  border: `1px solid ${selectedProviders[provider.key] ? "#3b82f6" : bdr}`,
+                  borderRadius: 10,
+                  padding: 14,
+                }}
+              >
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    cursor: "pointer",
+                    marginBottom: 10,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedProviders[provider.key]}
+                    onChange={() => toggleProvider(provider.key)}
+                  />
+                  <span style={{ fontWeight: 700 }}>{provider.label}</span>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>{provider.badge}</span>
+                </label>
 
-            <button style={btn(apiTested ? "primary" : "secondary")} onClick={testApi}>
-              {apiTested ? "✅ متصل" : "تست اتصال"}
-            </button>
+                <button
+                  style={btn(apiTested[provider.key] ? "primary" : "secondary")}
+                  onClick={() => testApi(provider.key)}
+                >
+                  {apiTested[provider.key] ? "✅ متصل" : `تست اتصال ${provider.label}`}
+                </button>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -621,21 +1155,21 @@ Please send price for China and UAE.`}
             style={{
               width: "100%",
               padding: 13,
-              background: isReady && phase !== "running" ? "linear-gradient(135deg,#3b82f6,#6366f1)" : bg3,
-              color: isReady && phase !== "running" ? "#fff" : "#64748b",
+              background: isReady && phase !== "running" && hasSelectedProvider ? "linear-gradient(135deg,#3b82f6,#6366f1)" : bg3,
+              color: isReady && phase !== "running" && hasSelectedProvider ? "#fff" : "#64748b",
               border: "none",
               borderRadius: 10,
               fontFamily: "inherit",
               fontSize: 15,
               fontWeight: 700,
-              cursor: isReady && phase !== "running" ? "pointer" : "not-allowed",
+              cursor: isReady && phase !== "running" && hasSelectedProvider ? "pointer" : "not-allowed",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               gap: 10,
             }}
             onClick={startAnalysis}
-            disabled={!isReady || phase === "running"}
+            disabled={!isReady || phase === "running" || !hasSelectedProvider}
           >
             {phase === "running" ? (
               <>
@@ -744,457 +1278,50 @@ Please send price for China and UAE.`}
           </div>
         )}
 
-        {phase === "done" &&
-          result &&
-          (() => {
-            const {
-              ai,
-              requestStats,
-              purchaseStats,
-              brandStats,
-              parts: pts,
-              customer: cust,
-              rfqNum: rfq,
-              winChance,
-            } = result;
-
-            const sc = ai.customerScore || 50;
-            const itemCount = ai.extractedItemsCount || (pts || []).length || 0;
-            const winScore = winChance?.score || 0;
-
-            return (
-              <>
-                <div style={{ ...card, display: "flex", gap: 20, alignItems: "center" }}>
-                  <div
-                    style={{
-                      width: 84,
-                      height: 84,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 24,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                      background:
-                        sc >= 70
-                          ? "rgba(16,185,129,0.15)"
-                          : sc >= 40
-                            ? "rgba(245,158,11,0.15)"
-                            : "rgba(239,68,68,0.15)",
-                      color: sc >= 70 ? "#34d399" : sc >= 40 ? "#fbbf24" : "#f87171",
-                      border: `2px solid ${sc >= 70 ? "#10b981" : sc >= 40 ? "#f59e0b" : "#ef4444"}`,
-                    }}
-                  >
-                    {sc}
-                  </div>
-
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>مشتری</div>
-
-                    <div style={{ fontSize: 19, fontWeight: 700, marginBottom: 4 }}>
-                      {cust || "نامشخص"}
-                    </div>
-
-                    <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 8 }}>
-                      RFQ: {rfq || "—"} | {itemCount} آیتم استخراج‌شده | ارزش:{" "}
-                      {ai.dealValue || "—"} | شانس برد: {winScore || "—"}%
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Tag color="blue">{ai.customerLevel || "Regular"}</Tag>
-                      <Tag color="yellow">اولویت: {ai.priority || "Normal"}</Tag>
-                      <Tag color="green">{requestStats.quality}</Tag>
-                      {winScore > 0 && (
-                        <Tag color={winScore >= 65 ? "green" : winScore >= 40 ? "yellow" : "red"}>
-                          Win Chance: {winScore}%
-                        </Tag>
-                      )}
-                      {requestStats.conversionRate > 0 && (
-                        <Tag color="blue">نرخ تبدیل {requestStats.conversionRate}%</Tag>
-                      )}
-                    </div>
-                  </div>
+        {phase === "done" && result && (
+          <>
+            {Object.entries(result.errors || {}).length > 0 && (
+              <div style={{ ...card, borderRight: "4px solid #ef4444" }}>
+                <div style={{ ...secTitle, marginBottom: 10 }}>
+                  <div style={bar} />
+                  خطاهای مدل‌ها
                 </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <div style={card}>
-                    <div style={{ ...secTitle, marginBottom: 10 }}>
-                      <div style={bar} />
-                      📋 سوابق فرصت‌های این مشتری
+                <div style={textBox}>
+                  {Object.entries(result.errors).map(([key, msg]) => (
+                    <div key={key}>
+                      {AI_PROVIDERS[key]?.label || key}: {msg}
                     </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>کل فرصت‌های فایل‌ها</span>
-                      <span style={{ fontWeight: 600 }}>{requestStats.totalAllRequests}</span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>فرصت‌های این مشتری</span>
-                      <span style={{ fontWeight: 600, color: "#60a5fa" }}>
-                        {requestStats.customerRequests}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>فرصت‌های فروش‌شده</span>
-                      <span style={{ fontWeight: 600, color: "#34d399" }}>
-                        {requestStats.soldRequests}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>ارزش فرصت‌های این مشتری</span>
-                      <span style={{ fontWeight: 600 }}>
-                        {formatMoney(requestStats.requestAmount)}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>کیفیت مشتری</span>
-                      <span style={{ fontWeight: 600, color: "#fbbf24" }}>
-                        {requestStats.quality}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={card}>
-                    <div style={{ ...secTitle, marginBottom: 10 }}>
-                      <div style={bar} />
-                      💰 سوابق خرید واقعی
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>جمع کل خرید واقعی ثبت‌شده</span>
-                      <span style={{ fontWeight: 700, color: "#34d399" }}>
-                        {purchaseStats.totalPurchaseCount} خرید / {formatMoney(purchaseStats.totalPurchaseAmount)}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>خریدهای فایل Purchase</span>
-                      <span style={{ fontWeight: 600, color: "#34d399" }}>
-                        {purchaseStats.filePurchaseCount}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>مبلغ خرید واقعی از فایل Purchase</span>
-                      <span style={{ fontWeight: 600, color: "#60a5fa" }}>
-                        {formatMoney(purchaseStats.filePurchaseAmount)}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>خریدهای جدید دستی</span>
-                      <span style={{ fontWeight: 600, color: "#34d399" }}>
-                        {purchaseStats.manualPurchaseCount}
-                      </span>
-                    </div>
-
-                    <div style={mRow}>
-                      <span style={{ color: "#64748b" }}>مبلغ خریدهای جدید دستی</span>
-                      <span style={{ fontWeight: 600, color: "#60a5fa" }}>
-                        {formatMoney(purchaseStats.manualPurchaseAmount)}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#94a3b8",
-                        lineHeight: 1.8,
-                        marginTop: 10,
-                        direction: "rtl",
-                        textAlign: "right",
-                      }}
-                    >
-                      {purchaseStats.background}
-                    </div>
-                  </div>
+                  ))}
                 </div>
+              </div>
+            )}
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <div style={card}>
-                    <div style={{ ...secTitle, marginBottom: 10 }}>
-                      <div style={bar} />
-                      🏷️ تحلیل برند و محصول در فایل‌ها
-                    </div>
+            {Object.entries(result.aiResults || {}).map(([providerKey, ai]) =>
+              renderAiResult(providerKey, ai, {
+                requestStats: result.requestStats,
+                purchaseStats: result.purchaseStats,
+                brandStats: result.brandStats,
+                winChance: result.winChance,
+                parts: ai.parts || [],
+              })
+            )}
 
-                    <div style={textBox}>
-                      <div>{brandStats?.summary || "—"}</div>
-
-                      <div style={divider} />
-
-                      <div>
-                        برندهای پرتکرار:
-                        <br />
-                        {(brandStats?.topBrandsAll || [])
-                          .map(x => `${x.name} (${x.count})`)
-                          .join("، ") || "—"}
-                      </div>
-
-                      <div style={divider} />
-
-                      <div>
-                        محصولات پرتکرار:
-                        <br />
-                        {(brandStats?.topPartsAll || [])
-                          .map(x => `${x.name} (${x.count})`)
-                          .join("، ") || "—"}
-                      </div>
-
-                      <div style={divider} />
-
-                      <div>{ai.brandProductReview?.brandAttractiveness || "—"}</div>
-                      <div>{ai.brandProductReview?.productDemandSignal || "—"}</div>
-                      <div>{ai.brandProductReview?.valueComment || "—"}</div>
-                      <div>{ai.brandProductReview?.similarPurchaseEvidence || "—"}</div>
-                    </div>
-                  </div>
-
-                  <div style={card}>
-                    <div style={{ ...secTitle, marginBottom: 10 }}>
-                      <div style={bar} />
-                      🎯 شانس برنده شدن پیشنهاد
-                    </div>
-
-                    <div style={textBox}>
-                      <div
-                        style={{
-                          fontSize: 28,
-                          fontWeight: 700,
-                          color:
-                            winScore >= 65
-                              ? "#34d399"
-                              : winScore >= 40
-                                ? "#fbbf24"
-                                : "#f87171",
-                        }}
-                      >
-                        {winScore || "—"}%
-                      </div>
-
-                      <div style={divider} />
-
-                      <div>سطح: {winChance?.level || "—"}</div>
-
-                      <div style={divider} />
-
-                      <div>
-                        معیارهای اصلی:
-                        <br />
-                        {(winChance?.factors || []).slice(0, 4).map((f, i) => (
-                          <span key={i}>• {f}<br /></span>
-                        ))}
-                      </div>
-
-                      <div style={divider} />
-
-                      <div>{winChance?.explanation || "—"}</div>
-
-                      <div style={divider} />
-
-                      <div>
-                        راه افزایش شانس:
-                        <br />
-                        {ai.winChanceCommentary?.howToIncreaseChance || "—"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {(ai.summary || ai.customerBackgroundCheck || ai.companyBackground) && (
-                  <div
-                    style={{
-                      ...card,
-                      borderRight: "4px solid #3b82f6",
-                    }}
-                  >
-                    <div style={textBox}>
-                      {ai.summary && (
-                        <>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                            📝 خلاصه درخواست
-                          </div>
-                          <div>{ai.summary}</div>
-                          <div style={divider} />
-                        </>
-                      )}
-
-                      {ai.companyBackground && (
-                        <>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                            🔎 بک‌گراند چک شرکت
-                          </div>
-                          <div>اندازه شرکت: {ai.companyBackground.companySize || "—"}</div>
-                          <div>حوزه فعالیت: {ai.companyBackground.industry || "—"}</div>
-                          <div>جغرافیا: {ai.companyBackground.geography || "—"}</div>
-                          <div>نوع شرکت: {ai.companyBackground.companyType || "—"}</div>
-                          <div>اطمینان: {ai.companyBackground.confidence || "low"}</div>
-                          <div style={{ color: "#64748b", marginTop: 8 }}>
-                            {ai.companyBackground.note ||
-                              "این بخش بدون وب‌سرچ واقعی و بر اساس نام/متن RFQ تخمین زده شده است."}
-                          </div>
-                        </>
-                      )}
-
-                      {ai.customerBackgroundCheck && (
-                        <>
-                          <div style={divider} />
-                          <div>{ai.customerBackgroundCheck}</div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ ...card, overflowX: "auto" }}>
-                  <div style={{ ...secTitle, marginBottom: 12 }}>
-                    <div style={bar} />
-                    ⚙️ تحلیل قطعات استخراج‌شده
-                  </div>
-
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        {[
-                          "Part Number",
-                          "Qty",
-                          "Manufacturer",
-                          "Category",
-                          "Description",
-                          "Application",
-                          "Status",
-                          "China Price",
-                          "UAE Price",
-                          "Alternative",
-                        ].map(h => (
-                          <th key={h} style={th}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {(ai.parts || []).map((p, i) => (
-                        <tr key={i}>
-                          <td style={td}>
-                            <code style={{ color: "#60a5fa", fontSize: 11 }}>
-                              {p.partNumber || "—"}
-                            </code>
-                          </td>
-                          <td style={td}>{p.qty || "—"}</td>
-                          <td style={td}>{p.manufacturer || "—"}</td>
-                          <td style={td}>{p.category || "—"}</td>
-                          <td style={td}>{p.description || "—"}</td>
-                          <td style={td}>{p.application || "—"}</td>
-                          <td style={td}>
-                            <SBadge status={p.status} />
-                            {p.eolNote && (
-                              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
-                                {p.eolNote}
-                              </div>
-                            )}
-                          </td>
-                          <td style={td}>{p.priceChina || "—"}</td>
-                          <td style={td}>{p.priceUAE || "—"}</td>
-                          <td style={{ ...td, color: "#94a3b8" }}>
-                            {p.alternatives || "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {(ai.parts || []).length > 0 && (
-                    <div
-                      style={{
-                        marginTop: 16,
-                        background: bg3,
-                        border: `1px solid ${bdr}`,
-                        borderRadius: 10,
-                        padding: 14,
-                        fontSize: 13,
-                        lineHeight: 1.9,
-                        color: "#94a3b8",
-                        direction: "ltr",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                        Simple Application Notes
-                      </div>
-
-                      {(ai.parts || []).map((p, i) => (
-                        <div key={i} style={{ marginBottom: 8 }}>
-                          <strong style={{ color: "#60a5fa" }}>
-                            {p.partNumber || `Item ${i + 1}`}:
-                          </strong>{" "}
-                          {p.application || p.description || "Application needs further technical review."}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    background: bg2,
-                    border: `1px solid ${bdr}`,
-                    borderRight: "4px solid #3b82f6",
-                    borderRadius: 14,
-                    padding: 20,
-                    marginBottom: 16,
-                  }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", marginBottom: 10 }}>
-                    💡 توصیه تیم فروش
-                  </div>
-
-                  <div style={textBox}>
-                    <div>{ai.recommendation || "—"}</div>
-                    <div style={divider} />
-                    <div>{ai.risks || "—"}</div>
-                    <div style={divider} />
-                    <div style={{ color: "#60a5fa", fontWeight: 600 }}>
-                      {ai.nextStep || "—"}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 12 }}>
-                  <button style={btn("primary")} onClick={copyReport}>
-                    📋 کپی گزارش
-                  </button>
-                  <button
-                    style={btn("secondary")}
-                    onClick={() => {
-                      setPhase("idle");
-                      setResult(null);
-                    }}
-                  >
-                    🔄 تحلیل جدید
-                  </button>
-                </div>
-              </>
-            );
-          })()}
+            <div style={{ display: "flex", gap: 12 }}>
+              <button style={btn("primary")} onClick={copyReport}>
+                📋 کپی گزارش
+              </button>
+              <button
+                style={btn("secondary")}
+                onClick={() => {
+                  setPhase("idle");
+                  setResult(null);
+                }}
+              >
+                🔄 تحلیل جدید
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div
