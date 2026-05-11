@@ -7,7 +7,19 @@ export default function SummaryCard({ summary }) {
         <div style={bar} />
         📝 خلاصه درخواست
       </div>
-      <div style={textBox}>{summary || "—"}</div>
+
+      <div
+        style={{
+          ...textBox,
+          textAlign: "right",
+          direction: "rtl",
+          unicodeBidi: "plaintext",
+          lineHeight: 2,
+          whiteSpace: "pre-line",
+        }}
+      >
+        {summary || "—"}
+      </div>
     </div>
   );
 }

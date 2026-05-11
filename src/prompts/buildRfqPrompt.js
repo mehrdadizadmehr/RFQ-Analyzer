@@ -20,12 +20,14 @@ Return only valid JSON. No markdown.
 
 Language rules:
 - JSON keys must stay English.
-- General business explanations must be in Persian/Farsi.
-- Technical names must stay English.
+- All business explanations, summaries, recommendations, risk explanations, pricing notes and background checks must be written in Persian/Farsi.
+- NEVER translate technical terms, industrial terminology, protocols, electrical standards, PLC/DCS terminology, manufacturer names, or brand names into Persian.
 - Part numbers must never be translated.
 - Brand names must never be translated.
 - Product categories must stay English.
-- Product descriptions, part applications, alternatives, and technical table values must be in English.
+- Product descriptions, part applications, alternatives, technical statuses, technical table values and sourcing terminology must remain in English.
+- Examples that must stay English: Siemens, Schneider, ABB, PLC, DCS, HMI, Servo Motor, VFD, Relay Module, RTD, MCC.
+- Write in a mixed commercial-engineering style readable for an Iranian industrial sales engineer.
 
 Critical architecture rule:
 - RFQ extraction has already been done by ChatGPT.
@@ -48,8 +50,11 @@ Pricing rules:
 - If pricing is uncertain, return a cautious range and mention uncertainty inside pricingNotes.
 
 Company background rules:
-- Company background must be AI-estimated from customer name/RFQ text only.
-- Do not claim verified online search.
+- Company background should be estimated intelligently from customer name, RFQ content, industry clues, geography clues, email signatures and industrial terminology.
+- Never claim guaranteed or verified web search.
+- If there are recognizable industrial/company signals, estimate probable industry, company type, geography and approximate company size.
+- Mention confidence level honestly.
+- background check explanations must be written in Persian.
 
 Similar purchase rule:
 - If similar brand, part number, or product category appears in uploaded files and has ended in Purchase or sold opportunity, mention it clearly.
@@ -107,11 +112,13 @@ level=${winChance.level}
 factors=${(winChance.factors || []).join(" | ")}
 explanation=${winChance.explanation}
 
-Important pricing output requirement:
+Important pricing and sourcing output requirement:
 - estimatedTotalChina must summarize the full RFQ estimated total for China sourcing.
 - estimatedTotalUAE must summarize the full RFQ estimated total for UAE market pricing.
 - pricingNotes must explain assumptions briefly in Persian.
 - Each part must include estimatedLineTotalChina and estimatedLineTotalUAE.
+- If recognizable suppliers, sourcing channels or market patterns exist, mention possible sourcing direction briefly.
+- Supplier suggestions must stay realistic and concise.
 
 Original RFQ/email text for context only:
 """
@@ -125,18 +132,19 @@ JSON schema:
   "dealValue": "High|Medium|Low",
   "priority": "Urgent|High|Normal|Low",
   "summary": "",
+  "summaryLanguage": "Persian with English technical terms",
   "estimatedTotalChina": "",
   "estimatedTotalUAE": "",
   "pricingNotes": "",
-  "extractedItemsCount": ${extractedItems.length},
-  "companyBackground": {
-    "companySize": "",
+  "backgroundCheckOnline": {
+    "companyType": "",
     "industry": "",
     "geography": "",
-    "companyType": "",
+    "estimatedSize": "",
     "confidence": "low|medium|high",
-    "note": ""
+    "onlineSignals": []
   },
+  "backgroundSummary": "",
   "customerBackgroundCheck": "",
   "brandProductReview": {
     "brandAttractiveness": "",
@@ -167,6 +175,13 @@ JSON schema:
       "estimatedLineTotalUAE": "",
       "alternatives": "",
       "eolNote": ""
+    }
+  ],
+  "supplierSuggestions": [
+    {
+      "supplierName": "",
+      "region": "China|UAE|Global",
+      "reason": ""
     }
   ],
   "recommendation": "",

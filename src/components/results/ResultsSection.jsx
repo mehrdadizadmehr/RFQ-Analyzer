@@ -26,7 +26,7 @@ export default function ResultsSection({ result }) {
       <BrandStatsCard brandStats={brandStats} ai={ai} />
       <WinChanceCard winChance={winChance} ai={ai} />
       <SummaryCard summary={ai.summary} />
-      <BackgroundCheckCard text={ai.customerBackgroundCheck} />
+      <BackgroundCheckCard ai={ai} />
       <PartsTable parts={parts} ai={ai} />
       <SalesRecommendationCard ai={ai} />
     </>

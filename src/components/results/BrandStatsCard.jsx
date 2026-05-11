@@ -8,9 +8,16 @@ export default function BrandStatsCard({ brandStats, ai }) {
         🏷️ تحلیل برند و محصول در فایل‌ها
       </div>
 
-      <div style={textBox}>
+      <div
+        style={{
+          ...textBox,
+          textAlign: "right",
+          direction: "rtl",
+          lineHeight: 2,
+        }}
+      >
         <div>
-          <strong>Market Activity:</strong>
+          <strong>وضعیت بازار و سابقه فایل‌ها:</strong>
           <br />
           {brandStats?.summary || "—"}
         </div>
@@ -18,38 +25,103 @@ export default function BrandStatsCard({ brandStats, ai }) {
         <div style={divider} />
 
         <div>
-          <strong>Top Brands:</strong>
+          <strong>برندهای پرتکرار:</strong>
           <br />
-          {(brandStats?.topBrandsAll || []).map(x => `${x.name} (${x.count})`).join(", ") || "—"}
+          {(brandStats?.topBrandsAll || [])
+            .map(x => `${x.name} (${x.count})`)
+            .join(" ، ") || "—"}
         </div>
 
         <div style={divider} />
 
         <div>
-          <strong>Top Products:</strong>
+          <strong>محصولات / مدل‌های پرتکرار:</strong>
           <br />
-          {(brandStats?.topPartsAll || []).map(x => `${x.name} (${x.count})`).join(", ") || "—"}
+          {(brandStats?.topPartsAll || [])
+            .map(x => `${x.name} (${x.count})`)
+            .join(" ، ") || "—"}
         </div>
 
         <div style={divider} />
 
         <div>
-          <strong>Similar Purchase Evidence:</strong>
+          <strong>سوابق خرید مشابه:</strong>
           <br />
-          {ai.brandProductReview?.similarPurchaseEvidence || "—"}
+          {ai?.brandProductReview?.similarPurchaseEvidence || "—"}
         </div>
 
         <div style={divider} />
 
         <div>
-          <strong>Brand / Model Demand Check:</strong>
-          <br />
-          Global brand mentions: {brandStats?.mentionedBrandCount || 0}
-          <br />
-          Global product/model mentions: {brandStats?.mentionedProductCount || 0}
-          <br />
-          Similar successful purchase records: {brandStats?.similarSuccessfulPurchasesCount || 0}
+          <strong>وضعیت تقاضای برند / مدل:</strong>
+
+          <div style={{ marginTop: 10 }}>
+            تعداد تکرار برند در کل فایل‌ها:
+            <strong style={{ marginRight: 6 }}>
+              {brandStats?.mentionedBrandCount || 0}
+            </strong>
+          </div>
+
+          <div>
+            تعداد تکرار مدل / محصول:
+            <strong style={{ marginRight: 6 }}>
+              {brandStats?.mentionedProductCount || 0}
+            </strong>
+          </div>
+
+          <div>
+            تعداد خریدهای موفق مشابه:
+            <strong style={{ marginRight: 6 }}>
+              {brandStats?.similarSuccessfulPurchasesCount || 0}
+            </strong>
+          </div>
+
+          {!!brandStats?.similarSuccessfulPurchasesAmount && (
+            <div>
+              ارزش تقریبی خریدهای مشابه:
+              <strong style={{ marginRight: 6 }}>
+                {brandStats.similarSuccessfulPurchasesAmount}
+              </strong>
+            </div>
+          )}
         </div>
+
+        {!!ai?.supplierSuggestions?.length && (
+          <>
+            <div style={divider} />
+
+            <div>
+              <strong>پیشنهاد تامین‌کننده / سورسینگ:</strong>
+
+              <div style={{ marginTop: 10 }}>
+                {ai.supplierSuggestions.map((s, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      marginBottom: 10,
+                      padding: 10,
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      borderRadius: 8,
+                      background: "rgba(255,255,255,0.02)",
+                    }}
+                  >
+                    <div>
+                      <strong>{s.supplierName || "Unknown Supplier"}</strong>
+                    </div>
+
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>
+                      منطقه تامین: {s.region || "Global"}
+                    </div>
+
+                    <div style={{ marginTop: 6 }}>
+                      {s.reason || "—"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
