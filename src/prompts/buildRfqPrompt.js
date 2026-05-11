@@ -58,6 +58,9 @@ Company background rules:
 - Mention confidence level honestly.
 - background check explanations must be written in Persian.
 - onlineSignals should contain short meaningful business/industry/company signals.
+- If official_website_candidates or linkedin_candidates are available, include the most relevant ones in backgroundCheckOnline.officialWebsiteCandidates and backgroundCheckOnline.linkedinCandidates.
+- Do not invent URLs. Only use URLs provided in online company enrichment.
+- If multiple companies are similar but not clearly the same, mention uncertainty in onlineSignals and confidence should be low or medium.
 
 Similar purchase rule:
 - If similar brand, part number, or product category appears in uploaded files and has ended in Purchase or sold opportunity, mention it clearly.
@@ -119,6 +122,9 @@ Online company enrichment:
 online_available=${companySearch?.onlineAvailable ? "yes" : "no"}
 cache_hit=${companySearch?.cacheHit ? "yes" : "no"}
 search_summary=${companySearch?.answer || "اطلاعات آنلاین قابل دریافت نیست"}
+official_website_candidates=${JSON.stringify(companySearch?.officialWebsiteCandidates || [])}
+linkedin_candidates=${JSON.stringify(companySearch?.linkedinCandidates || [])}
+other_source_candidates=${JSON.stringify(companySearch?.otherSourceCandidates || [])}
 search_results=${JSON.stringify(companySearch?.results || [])}
 search_error=${companySearch?.error || "none"}
 searched_at=${companySearch?.searchedAt || "unknown"}
@@ -154,6 +160,27 @@ JSON schema:
     "geography": "",
     "estimatedSize": "",
     "confidence": "low|medium|high",
+    "officialWebsiteCandidates": [
+      {
+        "title": "",
+        "url": "",
+        "reason": ""
+      }
+    ],
+    "linkedinCandidates": [
+      {
+        "title": "",
+        "url": "",
+        "reason": ""
+      }
+    ],
+    "otherSourceCandidates": [
+      {
+        "title": "",
+        "url": "",
+        "reason": ""
+      }
+    ],
     "onlineSignals": []
   },
   "backgroundSummary": "",

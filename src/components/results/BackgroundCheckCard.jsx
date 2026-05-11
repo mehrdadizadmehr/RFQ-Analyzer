@@ -8,6 +8,67 @@ export default function BackgroundCheckCard({ ai }) {
       ? "اطلاعات آنلاین دریافت و در تحلیل لحاظ شده است."
       : "اطلاعات آنلاین قابل دریافت نیست؛ تحلیل بر اساس متن RFQ و سیگنال‌های موجود انجام شده است.");
 
+  const renderSourceLinks = (title, items) => {
+    if (!Array.isArray(items) || items.length === 0) return null;
+
+    return (
+      <>
+        <div style={divider} />
+
+        <div>
+          <strong>{title}</strong>
+
+          <div style={{ marginTop: 10 }}>
+            {items.map((item, i) => (
+              <div
+                key={`${item.url || item.title || title}-${i}`}
+                style={{
+                  marginBottom: 10,
+                  padding: 10,
+                  border: `1px solid ${bdr}`,
+                  borderRadius: 8,
+                  background: "rgba(255,255,255,0.02)",
+                }}
+              >
+                <div>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "#60a5fa", textDecoration: "none" }}
+                  >
+                    {item.title || item.url || "لینک"}
+                  </a>
+                </div>
+
+                {!!item.reason && (
+                  <div style={{ marginTop: 6, color: "#94a3b8" }}>
+                    {item.reason}
+                  </div>
+                )}
+
+                {!!item.url && (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 11,
+                      color: "#64748b",
+                      direction: "ltr",
+                      textAlign: "left",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {item.url}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ ...secTitle, marginBottom: 10 }}>
@@ -106,6 +167,21 @@ export default function BackgroundCheckCard({ ai }) {
                   </strong>
                 </div>
               </div>
+
+              {renderSourceLinks(
+                "وب‌سایت‌های احتمالی:",
+                online?.officialWebsiteCandidates
+              )}
+
+              {renderSourceLinks(
+                "LinkedIn احتمالی:",
+                online?.linkedinCandidates
+              )}
+
+              {renderSourceLinks(
+                "سایر منابع آنلاین:",
+                online?.otherSourceCandidates
+              )}
 
               {!!online?.onlineSignals?.length && (
                 <>

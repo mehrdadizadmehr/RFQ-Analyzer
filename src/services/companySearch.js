@@ -9,6 +9,95 @@ function getCacheKey(companyName) {
   return `company_background:${normalizeCompanyKey(companyName)}`;
 }
 
+function getHostname(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function tokenizeCompanyName(companyName) {
+  return String(companyName || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map(x => x.trim())
+    .filter(x => x.length >= 3)
+    .filter(x => !["llc", "ltd", "co", "company", "corp", "corporation", "inc", "fze", "fzco", "dmcc", "trading"].includes(x));
+}
+
+function enrichSearchResults(companyName, results) {
+  const safeResults = Array.isArray(results) ? results : [];
+  const tokens = tokenizeCompanyName(companyName);
+
+  const linkedinCandidates = [];
+  const officialWebsiteCandidates = [];
+  const otherSourceCandidates = [];
+
+  safeResults.forEach(r => {
+    const url = r?.url || "";
+    const host = getHostname(url);
+    const title = r?.title || "";
+    const content = r?.content || "";
+
+    const item = {
+      title,
+      url,
+      content,
+      host,
+      score: r?.score || 0,
+    };
+
+    if (!url) return;
+
+    const isLinkedInCompany =
+      host.includes("linkedin.com") &&
+      (url.includes("/company/") || title.toLowerCase().includes("linkedin"));
+
+    if (isLinkedInCompany) {
+      linkedinCandidates.push(item);
+      return;
+    }
+
+    const isKnownDirectory =
+      host.includes("linkedin.com") ||
+      host.includes("facebook.com") ||
+      host.includes("instagram.com") ||
+      host.includes("twitter.com") ||
+      host.includes("x.com") ||
+      host.includes("zoominfo.com") ||
+      host.includes("dnb.com") ||
+      host.includes("rocketreach.co") ||
+      host.includes("crunchbase.com") ||
+      host.includes("yellowpages") ||
+      host.includes("kompass") ||
+      host.includes("exporthub") ||
+      host.includes("tradekey") ||
+      host.includes("made-in-china") ||
+      host.includes("alibaba");
+
+    const hostLooksOfficial = tokens.some(t => host.includes(t));
+
+    if (hostLooksOfficial && !isKnownDirectory) {
+      officialWebsiteCandidates.push(item);
+      return;
+    }
+
+    otherSourceCandidates.push(item);
+  });
+
+  return {
+    enrichedResults: safeResults.map(r => ({
+      ...r,
+      host: getHostname(r?.url || ""),
+    })),
+    linkedinCandidates,
+    officialWebsiteCandidates,
+    otherSourceCandidates,
+  };
+}
+
 export function getCachedCompanyBackground(companyName) {
   if (!companyName) return null;
 
@@ -74,6 +163,12 @@ export async function searchCompanyBackground(companyName, rfqText) {
 
     const data = await response.json();
 
+    const baseResults = Array.isArray(data?.results) ? data.results : [];
+    const enriched = enrichSearchResults(
+      data?.companyName || companyName || "",
+      baseResults
+    );
+
     const normalized = {
       ok: !!data?.ok,
       source: data?.source || "tavily",
@@ -83,7 +178,10 @@ export async function searchCompanyBackground(companyName, rfqText) {
       answer:
         data?.answer ||
         "اطلاعات آنلاین قابل دریافت نیست؛ تحلیل بر اساس متن RFQ انجام می‌شود.",
-      results: Array.isArray(data?.results) ? data.results : [],
+      results: enriched.enrichedResults,
+      officialWebsiteCandidates: enriched.officialWebsiteCandidates,
+      linkedinCandidates: enriched.linkedinCandidates,
+      otherSourceCandidates: enriched.otherSourceCandidates,
       searchedAt: data?.searchedAt || new Date().toISOString(),
       error: data?.error || null,
     };
@@ -104,6 +202,9 @@ export async function searchCompanyBackground(companyName, rfqText) {
       answer:
         "اطلاعات آنلاین قابل دریافت نیست؛ تحلیل بر اساس متن RFQ انجام می‌شود.",
       results: [],
+      officialWebsiteCandidates: [],
+      linkedinCandidates: [],
+      otherSourceCandidates: [],
       searchedAt: new Date().toISOString(),
       error: err.message || "Company search failed",
     };
