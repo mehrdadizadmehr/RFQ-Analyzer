@@ -41,6 +41,11 @@ Win chance rules:
 Pricing rules:
 - Estimate China and UAE prices only.
 - Do not include generic marketPrice.
+- For each item, provide priceChina and priceUAE as realistic rough ranges when exact market data is unknown.
+- Calculate an estimated total RFQ value for China and UAE using qty × estimated unit price/range.
+- Always return estimatedTotalChina and estimatedTotalUAE.
+- Never leave estimatedTotalChina or estimatedTotalUAE empty.
+- If pricing is uncertain, return a cautious range and mention uncertainty inside pricingNotes.
 
 Company background rules:
 - Company background must be AI-estimated from customer name/RFQ text only.
@@ -90,11 +95,23 @@ top_categories_all=${(brandStats.topCategoriesAll || []).map(x => `${x.name}:${x
 similar_successful_purchase_records=${brandStats.similarSuccessfulPurchasesCount}
 similar_successful_purchase_amount=${brandStats.similarSuccessfulPurchasesAmount}
 
+Pricing expectation:
+- extracted_item_count=${extractedItems.length}
+- You must estimate total RFQ value based on extracted items and quantities.
+- Use AED as the reporting currency if possible.
+- If China price is naturally in RMB/USD, still provide an approximate AED equivalent or clearly mention the currency.
+
 App-calculated win chance:
 score=${winChance.score}
 level=${winChance.level}
 factors=${(winChance.factors || []).join(" | ")}
 explanation=${winChance.explanation}
+
+Important pricing output requirement:
+- estimatedTotalChina must summarize the full RFQ estimated total for China sourcing.
+- estimatedTotalUAE must summarize the full RFQ estimated total for UAE market pricing.
+- pricingNotes must explain assumptions briefly in Persian.
+- Each part must include estimatedLineTotalChina and estimatedLineTotalUAE.
 
 Original RFQ/email text for context only:
 """
@@ -108,6 +125,9 @@ JSON schema:
   "dealValue": "High|Medium|Low",
   "priority": "Urgent|High|Normal|Low",
   "summary": "",
+  "estimatedTotalChina": "",
+  "estimatedTotalUAE": "",
+  "pricingNotes": "",
   "extractedItemsCount": ${extractedItems.length},
   "companyBackground": {
     "companySize": "",
@@ -143,6 +163,8 @@ JSON schema:
       "statusLabel": "",
       "priceChina": "",
       "priceUAE": "",
+      "estimatedLineTotalChina": "",
+      "estimatedLineTotalUAE": "",
       "alternatives": "",
       "eolNote": ""
     }

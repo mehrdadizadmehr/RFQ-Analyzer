@@ -1,13 +1,48 @@
 import { findColumn } from "./excel";
 import { normalizeText, parseNumber } from "./numbers";
 
+function isValidProductValue(value) {
+  const v = String(value || "").trim();
+
+  if (!v) return false;
+
+  const normalized = normalizeText(v);
+
+  if (!normalized) return false;
+
+  // remove garbage numeric-only values like 1,2,3,4
+  if (/^\d+$/.test(normalized)) return false;
+
+  // remove extremely short meaningless values
+  if (normalized.length <= 1) return false;
+
+  // ignore generic placeholders
+  if (
+    normalized === "na" ||
+    normalized === "n/a" ||
+    normalized === "none" ||
+    normalized === "null" ||
+    normalized === "-"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function getTopCounts(rows, col, limit = 7) {
   const map = {};
   if (!rows || !rows.length || !col) return [];
 
   rows.forEach(r => {
-    const value = String(r[col] || "").trim();
-    if (!value) return;
+    const rawValue = String(r[col] || "").trim();
+
+    if (!isValidProductValue(rawValue)) {
+      return;
+    }
+
+    const value = rawValue.toUpperCase();
+
     map[value] = (map[value] || 0) + 1;
   });
 
@@ -39,7 +74,14 @@ function extractTextMatches(rows, col, requestText) {
   const txt = normalizeText(requestText);
 
   return rows.filter(r => {
-    const value = normalizeText(r[col]);
+    const rawValue = r[col];
+
+    if (!isValidProductValue(rawValue)) {
+      return false;
+    }
+
+    const value = normalizeText(rawValue);
+
     return value && txt.includes(value);
   });
 }
@@ -150,6 +192,21 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
     ...mentionedCategorySoldRows,
   ].reduce((s, r) => s + parseNumber(r[amountCol]), 0);
 
+  const topBrandNames = topBrandsAll
+    .slice(0, 5)
+    .map(x => `${x.name} (${x.count})`)
+    .join(", ");
+
+  const topPartNames = topPartsAll
+    .slice(0, 5)
+    .map(x => `${x.name} (${x.count})`)
+    .join(", ");
+
+  const topCategoryNames = topCategoriesAll
+    .slice(0, 5)
+    .map(x => `${x.name} (${x.count})`)
+    .join(", ");
+
   return {
     topBrandsAll,
     topPartsAll,
@@ -177,9 +234,9 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
 
     summary:
       similarSuccessfulPurchasesCount > 0
-        ? `Similar brand/part/category has successful purchase or sold opportunity history in uploaded files: ${similarSuccessfulPurchasesCount} records.`
+        ? `Similar products and brands already exist in historical RFQs and purchases. Successful related records detected: ${similarSuccessfulPurchasesCount}. Top brands: ${topBrandNames || "N/A"}. Top products: ${topPartNames || "N/A"}. Top categories: ${topCategoryNames || "N/A"}.`
         : mentionedBrandRows.length || mentionedPartRows.length || mentionedCategoryRows.length
-          ? `Similar brand/part/category exists in uploaded files, but no clear successful purchase record was detected.`
-          : "No clear similar brand/part/category history was detected in uploaded files.",
+          ? `Similar brands/products were detected in uploaded history, but no confirmed successful purchase record was found. Top brands: ${topBrandNames || "N/A"}. Top products: ${topPartNames || "N/A"}.`
+          : "No meaningful historical similarity was detected in uploaded RFQ and purchase files.",
   };
 }

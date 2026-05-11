@@ -16,69 +16,146 @@ function hasUrgency(text) {
   );
 }
 
+function hasBudgetOrCommercialSignal(text) {
+  const t = String(text || "").toLowerCase();
+  return (
+    t.includes("target price") ||
+    t.includes("budget") ||
+    t.includes("best price") ||
+    t.includes("delivery") ||
+    t.includes("lead time") ||
+    t.includes("payment") ||
+    t.includes("قیمت") ||
+    t.includes("بودجه") ||
+    t.includes("زمان تحویل") ||
+    t.includes("پرداخت")
+  );
+}
+
 export function calculateWinChance({
   requestStats,
   purchaseStats,
   brandStats,
   requestText,
 }) {
-  const conversionRate = parseNumber(requestStats?.conversionRate);
+  const rawConversionRate = parseNumber(requestStats?.conversionRate);
+  const effectiveConversionRate = parseNumber(
+    requestStats?.effectiveConversionRate ?? requestStats?.conversionRate
+  );
+
   const customerRequests = parseNumber(requestStats?.customerRequests);
   const soldRequests = parseNumber(requestStats?.soldRequests);
   const totalPurchaseAmount = parseNumber(purchaseStats?.totalPurchaseAmount);
   const totalPurchaseCount = parseNumber(purchaseStats?.totalPurchaseCount);
   const mentionedBrandCount = parseNumber(brandStats?.mentionedBrandCount);
   const mentionedProductCount = parseNumber(brandStats?.mentionedProductCount);
+  const mentionedCategoryCount = parseNumber(brandStats?.mentionedCategoryCount);
+  const similarSuccessfulPurchasesCount = parseNumber(
+    brandStats?.similarSuccessfulPurchasesCount
+  );
+  const similarSuccessfulPurchasesAmount = parseNumber(
+    brandStats?.similarSuccessfulPurchasesAmount
+  );
 
-  let score = 35;
+  const urgencyDetected = hasUrgency(requestText);
+  const commercialSignalDetected = hasBudgetOrCommercialSignal(requestText);
+  const hasRealPurchase = totalPurchaseCount > 0 || totalPurchaseAmount > 0;
+  const hasHistoricalDemand =
+    mentionedBrandCount > 0 ||
+    mentionedProductCount > 0 ||
+    mentionedCategoryCount > 0;
 
+  let score = 32;
   const factors = [];
+  const riskFactors = [];
+  const positiveSignals = [];
 
-  if (conversionRate >= 40) {
+  if (effectiveConversionRate >= 65) {
     score += 18;
-    factors.push("نرخ تبدیل مشتری بالاست.");
-  } else if (conversionRate >= 20) {
-    score += 10;
-    factors.push("نرخ تبدیل مشتری قابل قبول است.");
-  } else if (customerRequests > 3 && soldRequests === 0) {
-    score -= 10;
-    factors.push("مشتری درخواست‌های متعدد داشته اما فروش ثبت‌شده ندارد.");
-  }
-
-  if (totalPurchaseAmount > 0) {
-    score += Math.min(20, 8 + Math.log10(totalPurchaseAmount + 1) * 3);
-    factors.push("سابقه خرید واقعی وجود دارد.");
-  }
-
-  if (totalPurchaseCount >= 3) {
+    factors.push("نرخ تبدیل موثر مشتری بالاست.");
+    positiveSignals.push("effective_conversion_high");
+  } else if (effectiveConversionRate >= 40) {
+    score += 14;
+    factors.push("نرخ تبدیل موثر مشتری خوب است.");
+    positiveSignals.push("effective_conversion_good");
+  } else if (effectiveConversionRate >= 20) {
     score += 8;
-    factors.push("تعداد خرید واقعی مشتری قابل توجه است.");
+    factors.push("نرخ تبدیل فرصت‌ها قابل قبول است.");
+    positiveSignals.push("conversion_acceptable");
+  } else if (customerRequests > 3 && soldRequests === 0 && !hasRealPurchase) {
+    score -= 10;
+    factors.push("مشتری درخواست‌های متعدد داشته اما فروش یا خرید واقعی ثبت‌شده ندارد.");
+    riskFactors.push("many_requests_without_sale_or_purchase");
+  }
+
+  if (hasRealPurchase) {
+    score += Math.min(22, 10 + Math.log10(totalPurchaseAmount + 1) * 3);
+    factors.push("سابقه خرید واقعی وجود دارد و این مشتری را از حالت صرفاً فرصت‌محور خارج می‌کند.");
+    positiveSignals.push("real_purchase_history");
+  }
+
+  if (totalPurchaseCount >= 5) {
+    score += 10;
+    factors.push("تعداد خرید واقعی مشتری بالا است.");
+    positiveSignals.push("repeat_buyer_high");
+  } else if (totalPurchaseCount >= 3) {
+    score += 7;
+    factors.push("چند خرید واقعی برای مشتری ثبت شده است.");
+    positiveSignals.push("repeat_buyer_medium");
   } else if (totalPurchaseCount === 1 || totalPurchaseCount === 2) {
     score += 4;
     factors.push("حداقل یک یا دو خرید واقعی ثبت شده است.");
+    positiveSignals.push("real_purchase_low_count");
   }
 
   if (customerRequests >= 10) {
     score += 6;
-    factors.push("تعداد درخواست‌های مشتری بالاست.");
+    factors.push("تعداد درخواست‌های مشتری بالاست و نشان‌دهنده تعامل مداوم است.");
+    positiveSignals.push("high_request_volume");
   } else if (customerRequests >= 3) {
     score += 3;
     factors.push("مشتری چند درخواست ثبت‌شده دارد.");
+    positiveSignals.push("medium_request_volume");
   }
 
-  if (mentionedBrandCount > 0 || mentionedProductCount > 0) {
-    score += 10;
-    factors.push("برند یا محصول مشابه در فایل‌ها تکرار شده و شناخت قبلی وجود دارد.");
+  if (similarSuccessfulPurchasesCount > 0) {
+    score += Math.min(14, 6 + similarSuccessfulPurchasesCount * 2);
+    factors.push("برای برند/مدل/دسته مشابه سابقه خرید موفق یا فرصت فروش‌شده وجود دارد.");
+    positiveSignals.push("similar_success_history");
+  } else if (hasHistoricalDemand) {
+    score += 7;
+    factors.push("برند، مدل یا دسته مشابه در فایل‌ها تکرار شده و شناخت قبلی وجود دارد.");
+    positiveSignals.push("historical_demand_signal");
   }
 
-  if (hasUrgency(requestText)) {
+  if (similarSuccessfulPurchasesAmount > 0) {
+    score += Math.min(8, Math.log10(similarSuccessfulPurchasesAmount + 1) * 2);
+    factors.push("ارزش مالی سوابق مشابه در فایل‌ها قابل توجه است.");
+    positiveSignals.push("similar_success_value");
+  }
+
+  if (urgencyDetected) {
     score += 8;
     factors.push("در متن درخواست نشانه فوریت دیده می‌شود.");
+    positiveSignals.push("urgency_detected");
   }
 
-  if (customerRequests === 0 && totalPurchaseCount === 0) {
+  if (commercialSignalDetected) {
+    score += 4;
+    factors.push("در متن RFQ نشانه‌های تجاری مثل قیمت، تحویل یا شرایط پرداخت دیده می‌شود.");
+    positiveSignals.push("commercial_signal_detected");
+  }
+
+  if (customerRequests === 0 && !hasRealPurchase) {
     score -= 8;
     factors.push("مشتری سابقه مشخصی در فایل‌ها ندارد.");
+    riskFactors.push("new_or_unknown_customer");
+  }
+
+  if (!hasHistoricalDemand) {
+    score -= 4;
+    factors.push("برای برند/مدل/دسته مشابه در فایل‌ها تقاضای مشخصی دیده نشد.");
+    riskFactors.push("low_historical_product_signal");
   }
 
   const finalScore = clamp(score);
@@ -91,18 +168,27 @@ export function calculateWinChance({
     score: finalScore,
     level,
     factors,
+    positiveSignals,
+    riskFactors,
     formula: {
-      baseScore: 35,
-      conversionRate,
+      baseScore: 32,
+      rawConversionRate,
+      effectiveConversionRate,
       customerRequests,
       soldRequests,
       totalPurchaseAmount,
       totalPurchaseCount,
       mentionedBrandCount,
       mentionedProductCount,
-      urgencyDetected: hasUrgency(requestText),
+      mentionedCategoryCount,
+      similarSuccessfulPurchasesCount,
+      similarSuccessfulPurchasesAmount,
+      urgencyDetected,
+      commercialSignalDetected,
+      hasRealPurchase,
+      hasHistoricalDemand,
     },
     explanation:
-      "این امتیاز داخل برنامه و بر اساس نرخ تبدیل، سابقه خرید واقعی، تعداد درخواست‌ها، تکرار برند/محصول در فایل‌ها و فوریت متن RFQ محاسبه شده است؛ عدد توسط AI حدس زده نشده است.",
+      "این امتیاز داخل برنامه و بر اساس نرخ تبدیل موثر، سابقه خرید واقعی، تعداد درخواست‌ها، سوابق موفق مشابه برای برند/مدل/دسته، ارزش مالی سوابق مشابه، فوریت متن RFQ و سیگنال‌های تجاری محاسبه شده است؛ عدد توسط AI حدس زده نشده است.",
   };
 }

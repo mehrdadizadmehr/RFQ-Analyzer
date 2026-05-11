@@ -5,7 +5,11 @@ import { buildExtractionPrompt } from "../prompts/buildExtractionPrompt";
 import { buildRfqPrompt } from "../prompts/buildRfqPrompt";
 import { callClaude } from "../services/claude";
 import { extractRfqWithOpenAI } from "../services/openai";
-import { analyzeCustomerRequests, analyzeCustomerPurchases } from "../utils/customerAnalysis";
+import {
+  analyzeCustomerRequests,
+  analyzeCustomerPurchases,
+  enrichCustomerRequestStatsWithPurchases,
+} from "../utils/customerAnalysis";
 import { analyzeBrandProductStats } from "../utils/brandProductAnalysis";
 import { calculateWinChance } from "../utils/winChance";
 
@@ -52,13 +56,29 @@ export function useAnalysis(showToast) {
       showToast("⚠️ استخراج ChatGPT انجام نشد؛ تحلیل با متن خام ادامه پیدا می‌کند.");
     }
 
-    const requestStats = analyzeCustomerRequests(files.req25, files.req26, extractedCustomer);
+    let requestStats = analyzeCustomerRequests(
+      files.req25,
+      files.req26,
+      extractedCustomer
+    );
+
     setStepState("s1", "done");
 
     setStepState("s2", "active");
     await delay(300);
 
-    const purchaseStats = analyzeCustomerPurchases(files.purchase, extractedCustomer, manualPurchaseCount, manualPurchaseAmount);
+    const purchaseStats = analyzeCustomerPurchases(
+      files.purchase,
+      extractedCustomer,
+      manualPurchaseCount,
+      manualPurchaseAmount
+    );
+
+    requestStats = enrichCustomerRequestStatsWithPurchases(
+      requestStats,
+      purchaseStats
+    );
+
     setStepState("s2", "done");
 
     setStepState("s3", "active");
@@ -66,7 +86,12 @@ export function useAnalysis(showToast) {
 
     const brandStats = analyzeBrandProductStats(files.req25, files.req26, files.purchase, normalizedRequestText);
 
-    const winChance = calculateWinChance({ requestStats, purchaseStats, brandStats, requestText: normalizedRequestText });
+    const winChance = calculateWinChance({
+      requestStats,
+      purchaseStats,
+      brandStats,
+      requestText: normalizedRequestText,
+    });
 
     setStepState("s3", "done");
     setStepState("s4", "active");

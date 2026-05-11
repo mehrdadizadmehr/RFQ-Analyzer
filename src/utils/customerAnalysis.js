@@ -15,6 +15,38 @@ export function isSameCustomer(rowValue, customer) {
   );
 }
 
+export function enrichCustomerRequestStatsWithPurchases(requestStats, purchaseStats) {
+  const totalPurchaseCount = parseNumber(purchaseStats?.totalPurchaseCount);
+  const totalPurchaseAmount = parseNumber(purchaseStats?.totalPurchaseAmount);
+  const conversionRate = parseNumber(requestStats?.conversionRate);
+
+  const hasRealPurchase = totalPurchaseCount > 0 || totalPurchaseAmount > 0;
+
+  const effectiveConversionRate = hasRealPurchase
+    ? Math.max(conversionRate, 65)
+    : conversionRate;
+
+  let effectiveQuality = requestStats?.quality || "نامشخص";
+
+  if (hasRealPurchase && effectiveConversionRate >= 65) {
+    effectiveQuality = "مشتری خریددار / با سابقه واقعی";
+  } else if (hasRealPurchase) {
+    effectiveQuality = "مشتری با خرید واقعی ثبت‌شده";
+  }
+
+  const effectiveBackground = hasRealPurchase
+    ? `${requestStats?.background || ""} علاوه بر سوابق درخواست، برای این مشتری خرید واقعی ثبت شده است؛ بنابراین نرخ تبدیل فرصت‌ها ممکن است صفر باشد، اما مشتری از نظر خرید واقعی فعال محسوب می‌شود.`
+    : requestStats?.background;
+
+  return {
+    ...requestStats,
+    effectiveConversionRate,
+    effectiveQuality,
+    effectiveBackground,
+    hasRealPurchase,
+  };
+}
+
 export function analyzeCustomerRequests(rows25, rows26, customer) {
   const allRows = [...(rows25 || []), ...(rows26 || [])];
 
@@ -26,9 +58,12 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
     soldRequests: 0,
     requestAmount: 0,
     conversionRate: 0,
+    effectiveConversionRate: 0,
     quality: "نامشخص",
+    effectiveQuality: "نامشخص",
     topBrands: [],
     background: "فایل درخواست‌ها بارگذاری نشده یا نام مشتری وارد نشده است.",
+    effectiveBackground: "فایل درخواست‌ها بارگذاری نشده یا نام مشتری وارد نشده است.",
   };
 
   if (!allRows.length || !customer) return empty;
@@ -108,10 +143,15 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
     soldRequests: sold.length,
     requestAmount,
     conversionRate,
+    effectiveConversionRate: conversionRate,
     quality,
+    effectiveQuality: quality,
     topBrands,
     background: matched.length
-      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل شده و نرخ تبدیل ${conversionRate}% است.`
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل‌شده در فایل Request دارد و نرخ تبدیل فرصت‌ها ${conversionRate}% است.`
+      : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
+    effectiveBackground: matched.length
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل‌شده در فایل Request دارد و نرخ تبدیل فرصت‌ها ${conversionRate}% است.`
       : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
   };
 }
