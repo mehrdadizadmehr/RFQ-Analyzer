@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 
+// import { buildExtractionPrompt } from "./prompts/buildExtractionPrompt";
+// import { extractRfqWithOpenAI } from "./services/openai";
 import { STEPS, delay, AUTO_EXCEL_FILES } from "./constants/rfq";
 import { AI_PROVIDERS, DEFAULT_SELECTED_PROVIDERS } from "./constants/providers";
 import { readExcelFile, readExcelFromUrl } from "./utils/excel";
@@ -10,7 +12,11 @@ import {
 import { analyzeBrandProductStats } from "./utils/brandProductAnalysis";
 import { buildRfqPrompt } from "./prompts/buildRfqPrompt";
 import { callClaude, testClaudeConnection } from "./services/claude";
-import { callOpenAI, testOpenAIConnection } from "./services/openai";
+import {
+  callOpenAI,
+  extractRfqWithOpenAI,
+  testOpenAIConnection,
+} from "./services/openai";
 import Tag from "./components/Tag";
 import SBadge from "./components/SBadge";
 import { formatMoney } from "./utils/numbers";
@@ -146,10 +152,39 @@ export default function App() {
 
     setStepState("s1", "active");
     await delay(300);
+
+    let extractedCustomer = customer;
+    let extractedRfq = rfqNum;
+    let normalizedRequestText = requestText;
+
+    try {
+      if (selectedProviders.openai) {
+        const extraction = await extractRfqWithOpenAI(
+          buildExtractionPrompt(requestText)
+        );
+
+        if (extraction?.customer && !customer?.trim()) {
+          extractedCustomer = extraction.customer;
+          setCustomer(extraction.customer);
+        }
+
+        if (extraction?.rfqNumber && !rfqNum?.trim()) {
+          extractedRfq = extraction.rfqNumber;
+          setRfqNum(extraction.rfqNumber);
+        }
+
+        if (extraction?.normalizedText) {
+          normalizedRequestText = extraction.normalizedText;
+        }
+      }
+    } catch (err) {
+      console.warn("RFQ extraction failed:", err.message);
+    }
+
     const requestStats = analyzeCustomerRequests(
       files.req25,
       files.req26,
-      customer
+      extractedCustomer
     );
     setStepState("s1", "done");
 
@@ -157,7 +192,7 @@ export default function App() {
     await delay(300);
     const purchaseStats = analyzeCustomerPurchases(
       files.purchase,
-      customer,
+      extractedCustomer,
       manualPurchaseCount,
       manualPurchaseAmount
     );
@@ -169,14 +204,14 @@ export default function App() {
       files.req25,
       files.req26,
       files.purchase,
-      requestText
+      normalizedRequestText
     );
 
     const winChance = calculateWinChance({
       requestStats,
       purchaseStats,
       brandStats,
-      requestText,
+      normalizedRequestText,
     });
 
     setStepState("s3", "done");
@@ -184,9 +219,9 @@ export default function App() {
     setStepState("s4", "active");
 
     const prompt = buildRfqPrompt({
-      customer,
-      rfqNum,
-      requestText,
+      customer: extractedCustomer,
+      rfqNum: extractedRfq,
+      requestText: normalizedRequestText,
       notes,
       extraCustomerInfo,
       manualPurchaseCount,
@@ -259,8 +294,8 @@ export default function App() {
       purchaseStats,
       brandStats,
       parts: primaryAi?.parts || [],
-      customer,
-      rfqNum,
+      customer: extractedCustomer,
+      rfqNum: extractedRfq,
       winChance,
     });
 

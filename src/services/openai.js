@@ -74,6 +74,10 @@ export async function callOpenAI(prompt, maxTokens = 3200) {
   return parseOpenAIJson(text);
 }
 
+export async function extractRfqWithOpenAI(prompt) {
+  return callOpenAI(prompt, 1600);
+}
+
 export async function testOpenAIConnection() {
   const response = await fetch("/api/openai", {
     method: "POST",

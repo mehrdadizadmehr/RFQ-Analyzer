@@ -10,9 +10,12 @@ export function buildRfqPrompt({
   purchaseStats,
   brandStats,
   winChance,
+  extractedRfq,
 }) {
+  const extractedItems = extractedRfq?.items || [];
+
   return `
-Role: B2B RFQ analyst for industrial automation parts.
+Role: Senior B2B commercial analyst for industrial automation RFQs.
 Return only valid JSON. No markdown.
 
 Language rules:
@@ -23,7 +26,12 @@ Language rules:
 - Brand names must never be translated.
 - Product categories must stay English.
 - Product descriptions, part applications, alternatives, and technical table values must be in English.
-- Do not translate technical words such as PLC, HMI, CPU, I/O Module, Contactor, Relay, Sensor, Power Supply, Terminal Block, Circuit Breaker, Drive, Servo, Encoder, Switchgear.
+
+Critical architecture rule:
+- RFQ extraction has already been done by ChatGPT.
+- Do NOT re-extract from scratch unless the extracted list is clearly empty.
+- Use extractedRfq as the primary technical item source.
+- Your job is commercial analysis, risk analysis, sourcing strategy, pricing logic, and final recommendation.
 
 Win chance rules:
 - Do NOT calculate win chance score.
@@ -41,8 +49,6 @@ Company background rules:
 Similar purchase rule:
 - If similar brand, part number, or product category appears in uploaded files and has ended in Purchase or sold opportunity, mention it clearly.
 - Mention that the purchase/sold history may belong to other customers, not necessarily this customer.
-- Explain how many similar brand/part/category successful records exist.
-- Use this evidence in brandProductReview and winChanceCommentary.
 - Keep all brand, part, category names in English.
 
 Customer:
@@ -52,6 +58,12 @@ notes=${notes || "none"}
 manual_note=${extraCustomerInfo || "none"}
 manual_new_purchase_count=${manualPurchaseCount || 0}
 manual_new_purchase_amount=${manualPurchaseAmount || 0}
+
+Extracted RFQ by ChatGPT:
+items=${JSON.stringify(extractedItems)}
+brands=${JSON.stringify(extractedRfq?.brands || [])}
+categories=${JSON.stringify(extractedRfq?.categories || [])}
+extraction_notes=${extractedRfq?.extractionNotes || "none"}
 
 Opportunity history from Request files:
 total_all_opportunities=${requestStats.totalAllRequests}
@@ -75,24 +87,8 @@ top_brands_all=${(brandStats.topBrandsAll || []).map(x => `${x.name}:${x.count}`
 top_products_all=${(brandStats.topPartsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 top_categories_all=${(brandStats.topCategoriesAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 
-mentioned_brand_count=${brandStats.mentionedBrandCount}
-mentioned_product_count=${brandStats.mentionedProductCount}
-mentioned_category_count=${brandStats.mentionedCategoryCount}
-
-mentioned_brand_amount=${brandStats.mentionedBrandAmount}
-mentioned_product_amount=${brandStats.mentionedProductAmount}
-mentioned_category_amount=${brandStats.mentionedCategoryAmount}
-
 similar_successful_purchase_records=${brandStats.similarSuccessfulPurchasesCount}
 similar_successful_purchase_amount=${brandStats.similarSuccessfulPurchasesAmount}
-
-similar_purchase_evidence:
-brand_purchase_count=${brandStats.similarPurchaseEvidence?.brandPurchaseCount || 0}
-part_purchase_count=${brandStats.similarPurchaseEvidence?.partPurchaseCount || 0}
-category_purchase_count=${brandStats.similarPurchaseEvidence?.categoryPurchaseCount || 0}
-brand_sold_opportunity_count=${brandStats.similarPurchaseEvidence?.brandSoldOpportunityCount || 0}
-part_sold_opportunity_count=${brandStats.similarPurchaseEvidence?.partSoldOpportunityCount || 0}
-category_sold_opportunity_count=${brandStats.similarPurchaseEvidence?.categorySoldOpportunityCount || 0}
 
 App-calculated win chance:
 score=${winChance.score}
@@ -100,7 +96,7 @@ level=${winChance.level}
 factors=${(winChance.factors || []).join(" | ")}
 explanation=${winChance.explanation}
 
-RFQ/email text:
+Original RFQ/email text for context only:
 """
 ${requestText}
 """
@@ -112,7 +108,7 @@ JSON schema:
   "dealValue": "High|Medium|Low",
   "priority": "Urgent|High|Normal|Low",
   "summary": "",
-  "extractedItemsCount": 0,
+  "extractedItemsCount": ${extractedItems.length},
   "companyBackground": {
     "companySize": "",
     "industry": "",
