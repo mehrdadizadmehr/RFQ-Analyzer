@@ -33,7 +33,23 @@ function parseClaudeJson(text) {
     return JSON.parse(jsonText);
   } catch (err) {
     console.error("Raw Claude JSON:", jsonText);
-    throw new Error("Claude خروجی JSON نامعتبر داد: " + err.message);
+
+    // تلاش برای repair ساده JSON
+    try {
+      let repaired = jsonText;
+
+      // حذف comma اضافه
+      repaired = repaired
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]");
+
+      // حذف newline های مشکل‌دار داخل string
+      repaired = repaired.replace(/\n/g, " ");
+
+      return JSON.parse(repaired);
+    } catch {
+      throw new Error("Claude خروجی JSON نامعتبر داد: " + err.message);
+    }
   }
 }
 
@@ -46,6 +62,7 @@ export async function callClaude(prompt, maxTokens = 3000) {
     body: JSON.stringify({
       model: MODEL_NAME,
       max_tokens: maxTokens,
+      temperature: 0,
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -65,7 +82,40 @@ export async function callClaude(prompt, maxTokens = 3000) {
 
   const text = data.content?.map(c => c.text || "").join("") || "";
 
-  return parseClaudeJson(text);
+  try {
+    return parseClaudeJson(text);
+  } catch (err) {
+    console.warn("Claude JSON parse failed. Retrying once...", err.message);
+
+    // یک retry خودکار برای کاهش خطاهای random
+    const retryResponse = await fetch("/api/claude", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL_NAME,
+        max_tokens: maxTokens,
+        temperature: 0,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    const retryRaw = await retryResponse.text();
+
+    let retryData;
+
+    try {
+      retryData = JSON.parse(retryRaw);
+    } catch {
+      throw err;
+    }
+
+    const retryText =
+      retryData.content?.map(c => c.text || "").join("") || "";
+
+    return parseClaudeJson(retryText);
+  }
 }
 
 export async function testClaudeConnection() {
@@ -77,6 +127,7 @@ export async function testClaudeConnection() {
     body: JSON.stringify({
       model: MODEL_NAME,
       max_tokens: 20,
+      temperature: 0,
       messages: [{ role: "user", content: "Return only JSON: {\"ok\":true}" }],
     }),
   });
