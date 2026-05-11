@@ -992,6 +992,7 @@ Please send price for China and UAE.`}
                   <div style={bar} />
                   خطاهای مدل‌ها
                 </div>
+
                 <div style={textBox}>
                   {Object.entries(result.errors).map(([key, msg]) => (
                     <div key={key}>
@@ -1074,40 +1075,276 @@ Please send price for China and UAE.`}
                     </div>
                   </div>
 
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 14,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={card}>
+                      <div style={{ ...secTitle, marginBottom: 10 }}>
+                        <div style={bar} />
+                        📋 سوابق فرصت‌های این مشتری
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>تعداد فرصت‌های مشتری</span>
+                        <span style={{ fontWeight: 600 }}>{requestStats.customerRequests}</span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>فرصت‌های فروش‌شده</span>
+                        <span style={{ fontWeight: 600, color: "#34d399" }}>
+                          {requestStats.soldRequests}
+                        </span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>ارزش فرصت‌ها</span>
+                        <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                          {formatMoney(requestStats.requestAmount)}
+                        </span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>نرخ تبدیل</span>
+                        <span style={{ fontWeight: 600 }}>{requestStats.conversionRate}%</span>
+                      </div>
+
+                      <div style={{ marginTop: 12, color: "#94a3b8", lineHeight: 1.9, fontSize: 13 }}>
+                        کیفیت مشتری: {requestStats.quality}
+                      </div>
+                    </div>
+
+                    <div style={card}>
+                      <div style={{ ...secTitle, marginBottom: 10 }}>
+                        <div style={bar} />
+                        💰 سوابق خرید واقعی
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>خریدهای فایل Purchase</span>
+                        <span style={{ fontWeight: 600 }}>{purchaseStats.filePurchaseCount}</span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>مبلغ خرید فایل</span>
+                        <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                          {formatMoney(purchaseStats.filePurchaseAmount)}
+                        </span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>خریدهای دستی</span>
+                        <span style={{ fontWeight: 600, color: "#34d399" }}>
+                          {purchaseStats.manualPurchaseCount}
+                        </span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>مبلغ خریدهای دستی</span>
+                        <span style={{ fontWeight: 600, color: "#60a5fa" }}>
+                          {formatMoney(purchaseStats.manualPurchaseAmount)}
+                        </span>
+                      </div>
+
+                      <div style={mRow}>
+                        <span style={{ color: "#64748b" }}>جمع کل خرید واقعی</span>
+                        <span style={{ fontWeight: 700, color: "#34d399" }}>
+                          {formatMoney(purchaseStats.totalPurchaseAmount)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ ...card, marginBottom: 14 }}>
                     <div style={{ ...secTitle, marginBottom: 10 }}>
                       <div style={bar} />
-                      🧠 AI Consensus
+                      🏷️ تحلیل برند و محصول در فایل‌ها
                     </div>
 
                     <div style={textBox}>
-                      <div><strong>Summary:</strong><br />{ai.summary || "—"}</div>
+                      <div>
+                        <strong>Market Activity:</strong>
+                        <br />
+                        {brandStats?.summary || "—"}
+                      </div>
+
                       <div style={divider} />
-                      <div><strong>Recommendation:</strong><br />{ai.recommendation || "—"}</div>
+
+                      <div>
+                        <strong>Top Brands:</strong>
+                        <br />
+                        {(brandStats?.topBrandsAll || [])
+                          .map(x => `${x.name} (${x.count})`)
+                          .join(", ") || "—"}
+                      </div>
+
                       <div style={divider} />
-                      <div><strong>Risks:</strong><br />{ai.risks || "—"}</div>
+
+                      <div>
+                        <strong>Top Products:</strong>
+                        <br />
+                        {(brandStats?.topPartsAll || [])
+                          .map(x => `${x.name} (${x.count})`)
+                          .join(", ") || "—"}
+                      </div>
+
                       <div style={divider} />
-                      <div><strong>Next Step:</strong><br />{ai.nextStep || "—"}</div>
+
+                      <div>
+                        <strong>Similar Purchase Evidence:</strong>
+                        <br />
+                        {ai.brandProductReview?.similarPurchaseEvidence || "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ ...card, marginBottom: 14 }}>
+                    <div style={{ ...secTitle, marginBottom: 10 }}>
+                      <div style={bar} />
+                      🎯 شانس برنده شدن پیشنهاد
+                    </div>
+
+                    <div style={textBox}>
+                      <div style={{ fontSize: 28, fontWeight: 700, color: winScore >= 65 ? "#34d399" : winScore >= 40 ? "#fbbf24" : "#f87171" }}>
+                        {winScore}%
+                      </div>
+
+                      <div style={divider} />
+
+                      <div>
+                        <strong>سطح:</strong>
+                        <br />
+                        {winChance?.level || "—"}
+                      </div>
+
+                      <div style={divider} />
+
+                      <div>
+                        <strong>معیارهای اصلی:</strong>
+                        <br />
+                        {(winChance?.factors || []).join("، ") || "—"}
+                      </div>
+
+                      <div style={divider} />
+
+                      <div>
+                        <strong>افزایش شانس:</strong>
+                        <br />
+                        {ai.winChanceCommentary?.howToIncreaseChance || "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ ...card, marginBottom: 14 }}>
+                    <div style={{ ...secTitle, marginBottom: 10 }}>
+                      <div style={bar} />
+                      📝 خلاصه درخواست
+                    </div>
+
+                    <div style={textBox}>
+                      {ai.summary || "—"}
+                    </div>
+                  </div>
+
+                  <div style={{ ...card, marginBottom: 14 }}>
+                    <div style={{ ...secTitle, marginBottom: 10 }}>
+                      <div style={bar} />
+                      🔎 بک‌گراند چک شرکت
+                    </div>
+
+                    <div style={textBox}>
+                      {ai.customerBackgroundCheck || "—"}
+                    </div>
+                  </div>
+
+                  <div style={{ ...card, overflowX: "auto" }}>
+                    <div style={{ ...secTitle, marginBottom: 12 }}>
+                      <div style={bar} />
+                      ⚙️ تحلیل قطعات استخراج‌شده
+                    </div>
+
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          {[
+                            "Part Number",
+                            "Qty",
+                            "Manufacturer",
+                            "Description",
+                            "Application",
+                            "Status",
+                            "China Price",
+                            "UAE Price",
+                            "Alternatives",
+                          ].map(h => (
+                            <th key={h} style={th}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {parts.map((p, i) => (
+                          <tr key={i}>
+                            <td style={td}>
+                              <code style={{ color: "#60a5fa", fontSize: 11 }}>
+                                {p.partNumber || "—"}
+                              </code>
+                            </td>
+                            <td style={td}>{p.qty || "—"}</td>
+                            <td style={td}>{p.manufacturer || "—"}</td>
+                            <td style={td}>{p.description || "—"}</td>
+                            <td style={td}>{p.application || "—"}</td>
+                            <td style={td}>
+                              <SBadge status={p.status} />
+                            </td>
+                            <td style={td}>{p.priceChina || "—"}</td>
+                            <td style={td}>{p.priceUAE || "—"}</td>
+                            <td style={td}>{p.alternatives || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ ...card, marginBottom: 14 }}>
+                    <div style={{ ...secTitle, marginBottom: 10 }}>
+                      <div style={bar} />
+                      💡 توصیه تیم فروش
+                    </div>
+
+                    <div style={textBox}>
+                      <div>
+                        <strong>Recommendation:</strong>
+                        <br />
+                        {ai.recommendation || "—"}
+                      </div>
+
+                      <div style={divider} />
+
+                      <div>
+                        <strong>Risks:</strong>
+                        <br />
+                        {ai.risks || "—"}
+                      </div>
+
+                      <div style={divider} />
+
+                      <div>
+                        <strong>Next Step:</strong>
+                        <br />
+                        {ai.nextStep || "—"}
+                      </div>
                     </div>
                   </div>
                 </>
               );
             })()}
-
-            <div style={{ display: "flex", gap: 12 }}>
-              <button style={btn("primary")} onClick={copyReport}>
-                📋 کپی گزارش
-              </button>
-              <button
-                style={btn("secondary")}
-                onClick={() => {
-                  setPhase("idle");
-                  setResult(null);
-                }}
-              >
-                🔄 تحلیل جدید
-              </button>
-            </div>
           </>
         )}
       </div>
