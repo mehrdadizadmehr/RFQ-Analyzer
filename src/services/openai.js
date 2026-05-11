@@ -74,8 +74,78 @@ export async function callOpenAI(prompt, maxTokens = 3200) {
   return parseOpenAIJson(text);
 }
 
+
 export async function extractRfqWithOpenAI(prompt) {
   return callOpenAI(prompt, 1600);
+}
+
+export async function buildBaseRfqAnalysisWithOpenAI({
+  customer,
+  rfqNum,
+  requestText,
+  requestStats,
+  purchaseStats,
+  brandStats,
+  companySearch,
+}) {
+  const prompt = `
+You are an industrial RFQ AI assistant.
+
+Generate ONLY valid JSON.
+Do not use markdown.
+Do not wrap in triple backticks.
+
+Language rules:
+- All narrative text MUST be Persian.
+- Technical terms, brands, models and part numbers can remain English.
+- Never leave important fields empty.
+
+Customer:
+${customer || "Unknown"}
+
+RFQ Number:
+${rfqNum || "N/A"}
+
+RFQ Text:
+${requestText || ""}
+
+Customer request statistics:
+${JSON.stringify(requestStats || {}, null, 2)}
+
+Purchase statistics:
+${JSON.stringify(purchaseStats || {}, null, 2)}
+
+Brand analysis:
+${JSON.stringify(brandStats || {}, null, 2)}
+
+Online company enrichment:
+${JSON.stringify(companySearch || {}, null, 2)}
+
+Return ONLY this JSON schema:
+{
+  "summary": "",
+  "backgroundSummary": "",
+  "onlineDataStatus": "",
+  "estimatedTotalChina": "",
+  "estimatedTotalUAE": "",
+  "pricingNotes": "",
+  "parts": [
+    {
+      "partNumber": "",
+      "qty": "",
+      "manufacturer": "",
+      "description": "",
+      "application": "",
+      "status": "Normal|Critical|OEM|Obsolete",
+      "priceChina": "",
+      "priceUAE": "",
+      "alternatives": ""
+    }
+  ]
+}
+`;
+
+  return callOpenAI(prompt, 4500);
 }
 
 export async function testOpenAIConnection() {

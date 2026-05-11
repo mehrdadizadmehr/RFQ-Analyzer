@@ -4,7 +4,10 @@ import { AI_PROVIDERS } from "../constants/providers";
 import { buildExtractionPrompt } from "../prompts/buildExtractionPrompt";
 import { buildRfqPrompt } from "../prompts/buildRfqPrompt";
 import { callClaude } from "../services/claude";
-import { extractRfqWithOpenAI } from "../services/openai";
+import {
+  extractRfqWithOpenAI,
+  buildBaseRfqAnalysisWithOpenAI,
+} from "../services/openai";
 import { searchCompanyBackground } from "../services/companySearch";
 import {
   analyzeCustomerRequests,
@@ -129,6 +132,34 @@ export function useAnalysis(showToast) {
     setStepState("s3", "done");
     setStepState("s4", "active");
 
+    let baseAi = null;
+
+    try {
+      baseAi = await buildBaseRfqAnalysisWithOpenAI({
+        customer: extractedCustomer,
+        rfqNum: extractedRfq,
+        requestText: normalizedRequestText,
+        requestStats,
+        purchaseStats,
+        brandStats,
+        companySearch,
+      });
+    } catch (err) {
+      console.warn("OpenAI base analysis failed:", err.message);
+      baseAi = {
+        summary: "خلاصه پایه توسط OpenAI قابل تولید نبود؛ تحلیل اصلی با Claude ادامه پیدا کرد.",
+        backgroundSummary: "بک‌گراند پایه توسط OpenAI قابل تولید نبود.",
+        onlineDataStatus:
+          companySearch?.onlineAvailable
+            ? "اطلاعات آنلاین دریافت شد اما خلاصه‌سازی پایه انجام نشد."
+            : "اطلاعات آنلاین قابل دریافت نیست؛ تحلیل بر اساس متن RFQ انجام می‌شود.",
+        estimatedTotalChina: "نامشخص",
+        estimatedTotalUAE: "نامشخص",
+        pricingNotes: "برآورد پایه قیمت توسط OpenAI قابل تولید نبود.",
+        parts: extractedRfqData?.items || [],
+      };
+    }
+
     const prompt = buildRfqPrompt({
       customer: extractedCustomer,
       rfqNum: extractedRfq,
@@ -143,13 +174,14 @@ export function useAnalysis(showToast) {
       winChance,
       extractedRfq: extractedRfqData,
       companySearch,
+      baseAi,
     });
 
     const aiResults = {};
     const errors = {};
 
     try {
-      await callClaude(prompt, 3200)
+      await callClaude(prompt, 4500)
         .then(data => { aiResults.claude = data; })
         .catch(err => { errors.claude = err.message; });
 
@@ -173,11 +205,30 @@ export function useAnalysis(showToast) {
     await delay(300);
     setStepState("s5", "done");
 
-    const mergedAi = { ...aiResults.claude };
+    const mergedAi = {
+      ...(baseAi || {}),
+      ...(aiResults.claude || {}),
+      summary: aiResults.claude?.summary || baseAi?.summary || "—",
+      backgroundSummary:
+        aiResults.claude?.backgroundSummary || baseAi?.backgroundSummary || "—",
+      onlineDataStatus:
+        aiResults.claude?.onlineDataStatus || baseAi?.onlineDataStatus || "—",
+      estimatedTotalChina:
+        aiResults.claude?.estimatedTotalChina || baseAi?.estimatedTotalChina || "نامشخص",
+      estimatedTotalUAE:
+        aiResults.claude?.estimatedTotalUAE || baseAi?.estimatedTotalUAE || "نامشخص",
+      pricingNotes:
+        aiResults.claude?.pricingNotes || baseAi?.pricingNotes || "—",
+      parts:
+        Array.isArray(aiResults.claude?.parts) && aiResults.claude.parts.length > 0
+          ? aiResults.claude.parts
+          : baseAi?.parts || [],
+    };
 
     setResult({
       ai: mergedAi,
       aiResults,
+      baseAi,
       errors,
       requestStats,
       purchaseStats,
