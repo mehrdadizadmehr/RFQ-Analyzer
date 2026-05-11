@@ -1,4 +1,5 @@
 import { MODEL_NAME } from "../constants/rfq";
+import { jsonrepair } from "jsonrepair";
 
 function extractJsonObject(text) {
   if (!text) throw new Error("پاسخ Claude خالی است.");
@@ -21,7 +22,7 @@ function extractJsonObject(text) {
   cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
 
   // حذف کاراکترهای کنترل نامعتبر
-  cleaned = cleaned.replace(/[\u0000-\u001F]+/g, " ");
+  cleaned = cleaned.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, " ");
 
   return cleaned;
 }
@@ -34,20 +35,12 @@ function parseClaudeJson(text) {
   } catch (err) {
     console.error("Raw Claude JSON:", jsonText);
 
-    // تلاش برای repair ساده JSON
+    // تلاش برای repair پیشرفته JSON
     try {
-      let repaired = jsonText;
-
-      // حذف comma اضافه
-      repaired = repaired
-        .replace(/,\s*}/g, "}")
-        .replace(/,\s*]/g, "]");
-
-      // حذف newline های مشکل‌دار داخل string
-      repaired = repaired.replace(/\n/g, " ");
-
+      const repaired = jsonrepair(jsonText);
       return JSON.parse(repaired);
-    } catch {
+    } catch (repairErr) {
+      console.error("Claude JSON repair failed:", repairErr);
       throw new Error("Claude خروجی JSON نامعتبر داد: " + err.message);
     }
   }
@@ -81,6 +74,10 @@ export async function callClaude(prompt, maxTokens = 3000) {
   }
 
   const text = data.content?.map(c => c.text || "").join("") || "";
+
+  if (!text.trim()) {
+    throw new Error("Claude پاسخ متنی خالی برگرداند.");
+  }
 
   try {
     return parseClaudeJson(text);
