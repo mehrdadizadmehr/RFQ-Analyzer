@@ -1,6 +1,64 @@
 import { findColumn } from "./excel";
 import { normalizeText, parseNumber } from "./numbers";
 
+const VALUE_WITH_UNIT_RE = /^>?\s*\d+(\.\d+)?\s*(v|vac|vdc|a|ma|w|kw|hz|khz|mhz|bar|psi|pa|kpa|mpa|rpm|mm|cm|m|kg|g|pcs|pc|ea|set|sets|lot|lots|aed|usd|rmb|cny|eur|%|°c|c)$/i;
+const NUMERIC_OPERATOR_RE = /^[<>≤≥=~]\s*\d+(\.\d+)?$/;
+const MOSTLY_NUMERIC_RE = /^[<>≤≥=~\s\d.,/%+-]+$/;
+
+function looksLikeEngineeringGarbage(value) {
+  const v = String(value || "").trim();
+  const normalized = normalizeText(v);
+
+  if (!normalized) return true;
+
+  if (NUMERIC_OPERATOR_RE.test(v)) return true;
+  if (VALUE_WITH_UNIT_RE.test(v)) return true;
+  if (MOSTLY_NUMERIC_RE.test(v)) return true;
+
+  const garbageWords = [
+    "qty",
+    "quantity",
+    "pcs",
+    "pc",
+    "piece",
+    "pieces",
+    "price",
+    "amount",
+    "total",
+    "delivery",
+    "lead time",
+    "stock",
+    "available",
+    "brand",
+    "model",
+    "item",
+    "description",
+    "request",
+    "quote",
+    "quotation",
+  ];
+
+  if (garbageWords.includes(normalized)) return true;
+
+  return false;
+}
+
+function looksLikeIndustrialPartNumber(value) {
+  const v = String(value || "").trim();
+
+  if (!v) return false;
+
+  // Industrial part numbers are usually alphanumeric and often contain dashes, slashes, dots or mixed letters/numbers.
+  const hasLetter = /[a-z]/i.test(v);
+  const hasDigit = /\d/.test(v);
+  const hasPartSeparators = /[-_/\.]/.test(v);
+
+  if (hasLetter && hasDigit && v.length >= 4) return true;
+  if (hasLetter && hasPartSeparators && v.length >= 5) return true;
+
+  return false;
+}
+
 function isValidProductValue(value) {
   const v = String(value || "").trim();
 
@@ -13,8 +71,11 @@ function isValidProductValue(value) {
   // remove garbage numeric-only values like 1,2,3,4
   if (/^\d+$/.test(normalized)) return false;
 
+  // remove values like >3900, >80, 24V, 50Hz, 10bar, etc.
+  if (looksLikeEngineeringGarbage(v)) return false;
+
   // remove extremely short meaningless values
-  if (normalized.length <= 1) return false;
+  if (normalized.length <= 2) return false;
 
   // ignore generic placeholders
   if (
@@ -22,12 +83,19 @@ function isValidProductValue(value) {
     normalized === "n/a" ||
     normalized === "none" ||
     normalized === "null" ||
+    normalized === "unknown" ||
     normalized === "-"
   ) {
     return false;
   }
 
-  return true;
+  // Keep known industrial part/model shapes.
+  if (looksLikeIndustrialPartNumber(v)) return true;
+
+  // Keep meaningful brand/category-like words, but reject very short generic fragments.
+  if (/^[a-z][a-z0-9\s&.+-]{3,}$/i.test(v)) return true;
+
+  return false;
 }
 
 function getTopCounts(rows, col, limit = 7) {
@@ -101,11 +169,18 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
 
   const partCol = findColumn(allRows, [
     "part number",
+    "part no",
+    "part_no",
+    "partnumber",
     "part",
     "pn",
+    "p/n",
     "model",
-    "item",
-    "کد",
+    "model no",
+    "model number",
+    "item code",
+    "کد کالا",
+    "کد قطعه",
     "قطعه",
   ]);
 
