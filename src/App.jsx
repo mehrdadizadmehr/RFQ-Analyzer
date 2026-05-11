@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 
 import { buildExtractionPrompt } from "./prompts/buildExtractionPrompt";
 import { STEPS, delay, AUTO_EXCEL_FILES } from "./constants/rfq";
-import { AI_PROVIDERS, DEFAULT_SELECTED_PROVIDERS } from "./constants/providers";
+import { AI_PROVIDERS } from "./constants/providers";
 import { readExcelFile, readExcelFromUrl } from "./utils/excel";
 import {
   analyzeCustomerRequests,
@@ -12,7 +12,6 @@ import { analyzeBrandProductStats } from "./utils/brandProductAnalysis";
 import { buildRfqPrompt } from "./prompts/buildRfqPrompt";
 import { callClaude, testClaudeConnection } from "./services/claude";
 import {
-  callOpenAI,
   extractRfqWithOpenAI,
   testOpenAIConnection,
 } from "./services/openai";
@@ -42,7 +41,6 @@ export default function App() {
   const [manualPurchaseCount, setManualPurchaseCount] = useState("");
   const [manualPurchaseAmount, setManualPurchaseAmount] = useState("");
 
-  const [selectedProviders, setSelectedProviders] = useState(DEFAULT_SELECTED_PROVIDERS);
   const [phase, setPhase] = useState("idle");
   const [steps, setSteps] = useState(STEPS.map(s => ({ ...s, state: "waiting" })));
   const [result, setResult] = useState(null);
@@ -58,7 +56,6 @@ export default function App() {
   };
 
   const isReady = requestText.trim().length > 0;
-  const hasSelectedProvider = selectedProviders.claude || selectedProviders.openai;
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +74,10 @@ export default function App() {
           }));
         } catch (err) {
           console.warn(`${item.label} auto-load failed:`, err.message);
+          setFileLabels(prev => ({
+            ...prev,
+            [item.key]: "⚠️ Auto-load failed",
+          }));
         }
       }
     }
@@ -104,19 +105,6 @@ export default function App() {
     }
   }, []);
 
-  const toggleProvider = key => {
-    setSelectedProviders(prev => {
-      const next = { ...prev, [key]: !prev[key] };
-
-      if (!next.claude && !next.openai) {
-        showToast("حداقل یک AI باید انتخاب شود.");
-        return prev;
-      }
-
-      return next;
-    });
-  };
-
   const testApi = async providerKey => {
     showToast(`در حال تست اتصال ${AI_PROVIDERS[providerKey].label}...`);
 
@@ -143,7 +131,7 @@ export default function App() {
   };
 
   const startAnalysis = async () => {
-    if (!isReady || !hasSelectedProvider) return;
+    if (!isReady) return;
 
     setPhase("running");
     setSteps(STEPS.map(s => ({ ...s, state: "waiting" })));
@@ -155,29 +143,29 @@ export default function App() {
     let extractedCustomer = customer;
     let extractedRfq = rfqNum;
     let normalizedRequestText = requestText;
+    let extractedRfqData = null;
 
     try {
-      if (selectedProviders.openai) {
-        const extraction = await extractRfqWithOpenAI(
-          buildExtractionPrompt(requestText)
-        );
+      extractedRfqData = await extractRfqWithOpenAI(
+        buildExtractionPrompt({ requestText })
+      );
 
-        if (extraction?.customer && !customer?.trim()) {
-          extractedCustomer = extraction.customer;
-          setCustomer(extraction.customer);
-        }
+      if (extractedRfqData?.customer && !customer?.trim()) {
+        extractedCustomer = extractedRfqData.customer;
+        setCustomer(extractedRfqData.customer);
+      }
 
-        if (extraction?.rfqNumber && !rfqNum?.trim()) {
-          extractedRfq = extraction.rfqNumber;
-          setRfqNum(extraction.rfqNumber);
-        }
+      if (extractedRfqData?.rfqNumber && !rfqNum?.trim()) {
+        extractedRfq = extractedRfqData.rfqNumber;
+        setRfqNum(extractedRfqData.rfqNumber);
+      }
 
-        if (extraction?.normalizedText) {
-          normalizedRequestText = extraction.normalizedText;
-        }
+      if (extractedRfqData?.normalizedText) {
+        normalizedRequestText = extractedRfqData.normalizedText;
       }
     } catch (err) {
       console.warn("RFQ extraction failed:", err.message);
+      showToast("⚠️ استخراج ChatGPT انجام نشد؛ تحلیل با متن خام ادامه پیدا می‌کند.");
     }
 
     const requestStats = analyzeCustomerRequests(
@@ -189,6 +177,7 @@ export default function App() {
 
     setStepState("s2", "active");
     await delay(300);
+
     const purchaseStats = analyzeCustomerPurchases(
       files.purchase,
       extractedCustomer,
@@ -199,6 +188,7 @@ export default function App() {
 
     setStepState("s3", "active");
     await delay(300);
+
     const brandStats = analyzeBrandProductStats(
       files.req25,
       files.req26,
@@ -210,11 +200,10 @@ export default function App() {
       requestStats,
       purchaseStats,
       brandStats,
-      normalizedRequestText,
+      requestText: normalizedRequestText,
     });
 
     setStepState("s3", "done");
-
     setStepState("s4", "active");
 
     const prompt = buildRfqPrompt({
@@ -229,45 +218,26 @@ export default function App() {
       purchaseStats,
       brandStats,
       winChance,
+      extractedRfq: extractedRfqData,
     });
 
     const aiResults = {};
     const errors = {};
 
     try {
-      const jobs = [];
+      await callClaude(prompt, 3200)
+        .then(data => {
+          aiResults.claude = data;
+        })
+        .catch(err => {
+          errors.claude = err.message;
+        });
 
-      if (selectedProviders.claude) {
-        jobs.push(
-          callClaude(prompt, 3200)
-            .then(data => {
-              aiResults.claude = data;
-            })
-            .catch(err => {
-              errors.claude = err.message;
-            })
-        );
-      }
-
-      if (selectedProviders.openai) {
-        jobs.push(
-          callOpenAI(prompt, 3200)
-            .then(data => {
-              aiResults.openai = data;
-            })
-            .catch(err => {
-              errors.openai = err.message;
-            })
-        );
-      }
-
-      await Promise.all(jobs);
-
-      if (!aiResults.claude && !aiResults.openai) {
+      if (!aiResults.claude) {
         throw new Error(
           Object.entries(errors)
-            .map(([k, v]) => `${AI_PROVIDERS[k].label}: ${v}`)
-            .join(" | ")
+            .map(([k, v]) => `${AI_PROVIDERS[k]?.label || k}: ${v}`)
+            .join(" | ") || "Claude analysis failed"
         );
       }
 
@@ -283,108 +253,8 @@ export default function App() {
     await delay(300);
     setStepState("s5", "done");
 
-    const claudeAi = aiResults.claude;
-    const openaiAi = aiResults.openai;
-
     const mergedAi = {
-      customerScore:
-        Math.round(
-          (
-            (Number(claudeAi?.customerScore || 0) +
-              Number(openaiAi?.customerScore || 0)) /
-            ([claudeAi, openaiAi].filter(Boolean).length || 1)
-          )
-        ) || 0,
-
-      customerLevel:
-        claudeAi?.customerLevel || openaiAi?.customerLevel || "Regular",
-
-      dealValue:
-        claudeAi?.dealValue || openaiAi?.dealValue || "Medium",
-
-      priority:
-        claudeAi?.priority || openaiAi?.priority || "Normal",
-
-      summary:
-        [claudeAi?.summary, openaiAi?.summary]
-          .filter(Boolean)
-          .join("\n\n"),
-
-      recommendation:
-        [claudeAi?.recommendation, openaiAi?.recommendation]
-          .filter(Boolean)
-          .join("\n\n"),
-
-      risks:
-        [claudeAi?.risks, openaiAi?.risks]
-          .filter(Boolean)
-          .join("\n\n"),
-
-      nextStep:
-        [claudeAi?.nextStep, openaiAi?.nextStep]
-          .filter(Boolean)
-          .join("\n\n"),
-
-      customerBackgroundCheck:
-        [
-          claudeAi?.customerBackgroundCheck,
-          openaiAi?.customerBackgroundCheck,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-
-      companyBackground:
-        claudeAi?.companyBackground || openaiAi?.companyBackground || null,
-
-      brandProductReview: {
-        brandAttractiveness:
-          claudeAi?.brandProductReview?.brandAttractiveness ||
-          openaiAi?.brandProductReview?.brandAttractiveness ||
-          "—",
-
-        productDemandSignal:
-          claudeAi?.brandProductReview?.productDemandSignal ||
-          openaiAi?.brandProductReview?.productDemandSignal ||
-          "—",
-
-        valueComment:
-          claudeAi?.brandProductReview?.valueComment ||
-          openaiAi?.brandProductReview?.valueComment ||
-          "—",
-
-        similarPurchaseEvidence:
-          claudeAi?.brandProductReview?.similarPurchaseEvidence ||
-          openaiAi?.brandProductReview?.similarPurchaseEvidence ||
-          "—",
-      },
-
-      winChanceCommentary: {
-        howToIncreaseChance:
-          claudeAi?.winChanceCommentary?.howToIncreaseChance ||
-          openaiAi?.winChanceCommentary?.howToIncreaseChance ||
-          "—",
-      },
-
-      parts:
-        (() => {
-          const merged = [];
-          const seen = new Set();
-
-          [...(claudeAi?.parts || []), ...(openaiAi?.parts || [])].forEach(p => {
-            const key = (p.partNumber || "")
-
-  .toLowerCase()
-
-  .replace(/[\s-_]/g, "");
-
-            if (!key || seen.has(key)) return;
-
-            seen.add(key);
-            merged.push(p);
-          });
-
-          return merged;
-        })(),
+      ...aiResults.claude,
     };
 
     setResult({
@@ -398,6 +268,7 @@ export default function App() {
       customer: extractedCustomer,
       rfqNum: extractedRfq,
       winChance,
+      extractedRfq: extractedRfqData,
     });
 
     setPhase("done");
@@ -406,34 +277,14 @@ export default function App() {
   const copyReport = () => {
     if (!result) return;
 
-    const { customer: c, rfqNum: r, requestStats, purchaseStats, winChance, aiResults } = result;
-
-    const providerReports = Object.entries(aiResults || {})
-      .map(([key, ai]) => {
-        return `
---- ${AI_PROVIDERS[key]?.label || key} ---
-امتیاز AI: ${ai.customerScore || "—"}
-سطح مشتری: ${ai.customerLevel || "—"}
-ارزش معامله: ${ai.dealValue || "—"}
-اولویت: ${ai.priority || "—"}
-
-خلاصه:
-${ai.summary || "—"}
-
-بک‌گراند چک مشتری:
-${ai.customerBackgroundCheck || "—"}
-
-توصیه:
-${ai.recommendation || "—"}
-
-ریسک‌ها:
-${ai.risks || "—"}
-
-قدم بعدی:
-${ai.nextStep || "—"}
-`;
-      })
-      .join("\n");
+    const {
+      customer: c,
+      rfqNum: r,
+      requestStats,
+      purchaseStats,
+      winChance,
+      ai,
+    } = result;
 
     navigator.clipboard
       .writeText(
@@ -460,7 +311,25 @@ ${winChance?.score || "—"}% | ${winChance?.level || "—"}
 معیارها:
 ${(winChance?.factors || []).join("، ") || "—"}
 
-${providerReports}`
+امتیاز AI: ${ai.customerScore || "—"}
+سطح مشتری: ${ai.customerLevel || "—"}
+ارزش معامله: ${ai.dealValue || "—"}
+اولویت: ${ai.priority || "—"}
+
+خلاصه:
+${ai.summary || "—"}
+
+بک‌گراند چک مشتری:
+${ai.customerBackgroundCheck || "—"}
+
+توصیه:
+${ai.recommendation || "—"}
+
+ریسک‌ها:
+${ai.risks || "—"}
+
+قدم بعدی:
+${ai.nextStep || "—"}`
       )
       .then(() => showToast("✅ کپی شد"));
   };
@@ -567,14 +436,13 @@ ${providerReports}`
     color: "#94a3b8",
     textAlign: "right",
     direction: "rtl",
+    unicodeBidi: "plaintext",
   };
 
   const divider = {
     borderTop: `1px solid ${bdr}`,
     margin: "10px 0",
   };
-
-
 
   return (
     <div
@@ -623,7 +491,7 @@ ${providerReports}`
               RFQ Analyzer Pro
             </div>
             <div style={{ fontSize: 11, color: "#64748b" }}>
-              سیستم تحلیل هوشمند — Claude AI + ChatGPT
+              AI Procurement Intelligence Platform
             </div>
           </div>
         </div>
@@ -633,11 +501,10 @@ ${providerReports}`
             fontSize: 11,
             padding: "3px 12px",
             borderRadius: 20,
-            background:
-              isReady && hasSelectedProvider
-                ? "rgba(16,185,129,0.15)"
-                : "rgba(100,116,139,0.15)",
-            color: isReady && hasSelectedProvider ? "#34d399" : "#94a3b8",
+            background: isReady
+              ? "rgba(16,185,129,0.15)"
+              : "rgba(100,116,139,0.15)",
+            color: isReady ? "#34d399" : "#94a3b8",
             display: "flex",
             alignItems: "center",
             gap: 6,
@@ -648,11 +515,11 @@ ${providerReports}`
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: isReady && hasSelectedProvider ? "#34d399" : "#64748b",
+              background: isReady ? "#34d399" : "#64748b",
               display: "inline-block",
             }}
           />
-          {isReady && hasSelectedProvider ? "آماده تحلیل" : "در انتظار تنظیمات"}
+          {isReady ? "آماده تحلیل" : "در انتظار تنظیمات"}
         </div>
       </div>
 
@@ -660,7 +527,7 @@ ${providerReports}`
         <div style={card}>
           <div style={secTitle}>
             <div style={bar} />
-            تنظیمات — فایل‌ها و مدل‌های AI
+            تنظیمات — فایل‌ها و موتورهای تحلیل
           </div>
 
           <div
@@ -679,7 +546,9 @@ ${providerReports}`
                 key={f.key}
                 style={{
                   background: bg3,
-                  border: `1.5px ${fileLabels[f.key] ? "solid" : "dashed"} ${fileLabels[f.key] ? "#10b981" : bdr}`,
+                  border: `1.5px ${fileLabels[f.key] ? "solid" : "dashed"} ${
+                    fileLabels[f.key] ? "#10b981" : bdr
+                  }`,
                   borderRadius: 10,
                   padding: "16px 12px",
                   textAlign: "center",
@@ -712,42 +581,45 @@ ${providerReports}`
               marginTop: 16,
             }}
           >
-            {Object.values(AI_PROVIDERS).map(provider => (
-              <div
-                key={provider.key}
-                style={{
-                  background: bg3,
-                  border: `1px solid ${selectedProviders[provider.key] ? "#3b82f6" : bdr}`,
-                  borderRadius: 10,
-                  padding: 14,
-                }}
-              >
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    cursor: "pointer",
-                    marginBottom: 10,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedProviders[provider.key]}
-                    onChange={() => toggleProvider(provider.key)}
-                  />
-                  <span style={{ fontWeight: 700 }}>{provider.label}</span>
-                  <span style={{ fontSize: 11, color: "#64748b" }}>{provider.badge}</span>
-                </label>
-
-                <button
-                  style={btn(apiTested[provider.key] ? "primary" : "secondary")}
-                  onClick={() => testApi(provider.key)}
-                >
-                  {apiTested[provider.key] ? "✅ متصل" : `تست اتصال ${provider.label}`}
-                </button>
+            <div
+              style={{
+                background: bg3,
+                border: `1px solid ${apiTested.openai ? "#10b981" : bdr}`,
+                borderRadius: 10,
+                padding: 14,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>RFQ Extraction Engine</div>
+              <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.8, marginBottom: 10 }}>
+                برای استخراج Part Number، Quantity، Brand و Category از متن RFQ استفاده می‌شود.
               </div>
-            ))}
+              <button
+                style={btn(apiTested.openai ? "primary" : "secondary")}
+                onClick={() => testApi("openai")}
+              >
+                {apiTested.openai ? "✅ Extraction متصل" : "تست اتصال Extraction"}
+              </button>
+            </div>
+
+            <div
+              style={{
+                background: bg3,
+                border: `1px solid ${apiTested.claude ? "#10b981" : bdr}`,
+                borderRadius: 10,
+                padding: 14,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Commercial Intelligence Engine</div>
+              <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.8, marginBottom: 10 }}>
+                برای تحلیل تجاری، ریسک، شانس برد، استراتژی فروش و پیشنهاد نهایی استفاده می‌شود.
+              </div>
+              <button
+                style={btn(apiTested.claude ? "primary" : "secondary")}
+                onClick={() => testApi("claude")}
+              >
+                {apiTested.claude ? "✅ Intelligence متصل" : "تست اتصال Intelligence"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -861,21 +733,24 @@ Please send price for China and UAE.`}
             style={{
               width: "100%",
               padding: 13,
-              background: isReady && phase !== "running" && hasSelectedProvider ? "linear-gradient(135deg,#3b82f6,#6366f1)" : bg3,
-              color: isReady && phase !== "running" && hasSelectedProvider ? "#fff" : "#64748b",
+              background:
+                isReady && phase !== "running"
+                  ? "linear-gradient(135deg,#3b82f6,#6366f1)"
+                  : bg3,
+              color: isReady && phase !== "running" ? "#fff" : "#64748b",
               border: "none",
               borderRadius: 10,
               fontFamily: "inherit",
               fontSize: 15,
               fontWeight: 700,
-              cursor: isReady && phase !== "running" && hasSelectedProvider ? "pointer" : "not-allowed",
+              cursor: isReady && phase !== "running" ? "pointer" : "not-allowed",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               gap: 10,
             }}
             onClick={startAnalysis}
-            disabled={!isReady || phase === "running" || !hasSelectedProvider}
+            disabled={!isReady || phase === "running"}
           >
             {phase === "running" ? (
               <>
@@ -1020,7 +895,7 @@ Please send price for China and UAE.`}
                   <div style={{ ...card, borderRight: "4px solid #3b82f6" }}>
                     <div style={{ ...secTitle, marginBottom: 10 }}>
                       <div style={bar} />
-                      Combined AI Analysis (Claude + ChatGPT)
+                      Combined Procurement Intelligence Report
                     </div>
 
                     <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
@@ -1060,7 +935,8 @@ Please send price for China and UAE.`}
                         </div>
 
                         <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 8 }}>
-                          RFQ: {result.rfqNum || "—"} | {itemCount} Extracted Items | Deal Value: {ai.dealValue || "—"} | Win Chance: {winScore || "—"}%
+                          RFQ: {result.rfqNum || "—"} | {itemCount} Extracted Items | Deal Value:{" "}
+                          {ai.dealValue || "—"} | Win Chance: {winScore || "—"}%
                         </div>
 
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1199,6 +1075,18 @@ Please send price for China and UAE.`}
                         <br />
                         {ai.brandProductReview?.similarPurchaseEvidence || "—"}
                       </div>
+
+                      <div style={divider} />
+
+                      <div>
+                        <strong>Brand / Model Demand Check:</strong>
+                        <br />
+                        Global brand mentions: {brandStats?.mentionedBrandCount || 0}
+                        <br />
+                        Global product/model mentions: {brandStats?.mentionedProductCount || 0}
+                        <br />
+                        Similar successful purchase records: {brandStats?.similarSuccessfulPurchasesCount || 0}
+                      </div>
                     </div>
                   </div>
 
@@ -1209,7 +1097,18 @@ Please send price for China and UAE.`}
                     </div>
 
                     <div style={textBox}>
-                      <div style={{ fontSize: 28, fontWeight: 700, color: winScore >= 65 ? "#34d399" : winScore >= 40 ? "#fbbf24" : "#f87171" }}>
+                      <div
+                        style={{
+                          fontSize: 28,
+                          fontWeight: 700,
+                          color:
+                            winScore >= 65
+                              ? "#34d399"
+                              : winScore >= 40
+                                ? "#fbbf24"
+                                : "#f87171",
+                        }}
+                      >
                         {winScore}%
                       </div>
 
@@ -1310,6 +1209,31 @@ Please send price for China and UAE.`}
                         ))}
                       </tbody>
                     </table>
+
+                    <div
+                      style={{
+                        marginTop: 16,
+                        background: bg3,
+                        border: `1px solid ${bdr}`,
+                        borderRadius: 10,
+                        padding: 14,
+                        fontSize: 13,
+                        lineHeight: 1.9,
+                        color: "#94a3b8",
+                        direction: "ltr",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                        Estimated RFQ Total Value
+                      </div>
+                      <div>
+                        China total estimate: {ai.estimatedTotalChina || "Ask AI to estimate in next analysis"}
+                      </div>
+                      <div>
+                        UAE total estimate: {ai.estimatedTotalUAE || "Ask AI to estimate in next analysis"}
+                      </div>
+                    </div>
                   </div>
 
                   <div style={{ ...card, marginBottom: 14 }}>
