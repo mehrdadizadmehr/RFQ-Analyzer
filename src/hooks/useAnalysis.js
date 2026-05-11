@@ -5,6 +5,7 @@ import { buildExtractionPrompt } from "../prompts/buildExtractionPrompt";
 import { buildRfqPrompt } from "../prompts/buildRfqPrompt";
 import { callClaude } from "../services/claude";
 import { extractRfqWithOpenAI } from "../services/openai";
+import { searchCompanyBackground } from "../services/companySearch";
 import {
   analyzeCustomerRequests,
   analyzeCustomerPurchases,
@@ -84,7 +85,39 @@ export function useAnalysis(showToast) {
     setStepState("s3", "active");
     await delay(300);
 
-    const brandStats = analyzeBrandProductStats(files.req25, files.req26, files.purchase, normalizedRequestText);
+    const brandStats = analyzeBrandProductStats(
+      files.req25,
+      files.req26,
+      files.purchase,
+      normalizedRequestText
+    );
+
+    let companySearch = null;
+
+    try {
+      companySearch = await searchCompanyBackground(
+        extractedCustomer,
+        normalizedRequestText
+      );
+
+      if (companySearch?.cacheHit) {
+        console.log("Company background loaded from cache");
+      } else if (companySearch?.onlineAvailable) {
+        console.log("Company background loaded from Tavily");
+      } else {
+        console.warn("Online company background unavailable");
+      }
+    } catch (err) {
+      console.warn("Company search failed:", err.message);
+
+      companySearch = {
+        ok: false,
+        onlineAvailable: false,
+        answer:
+          "اطلاعات آنلاین قابل دریافت نیست؛ تحلیل بر اساس متن RFQ انجام می‌شود.",
+        results: [],
+      };
+    }
 
     const winChance = calculateWinChance({
       requestStats,
@@ -109,6 +142,7 @@ export function useAnalysis(showToast) {
       brandStats,
       winChance,
       extractedRfq: extractedRfqData,
+      companySearch,
     });
 
     const aiResults = {};
@@ -153,6 +187,7 @@ export function useAnalysis(showToast) {
       rfqNum: extractedRfq,
       winChance,
       extractedRfq: extractedRfqData,
+      companySearch,
     });
 
     setPhase("done");

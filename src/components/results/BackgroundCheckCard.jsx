@@ -1,6 +1,13 @@
 import { card, secTitle, bar, textBox, divider, bdr } from "../../styles/theme";
 
 export default function BackgroundCheckCard({ ai }) {
+  const online = ai?.backgroundCheckOnline;
+  const onlineAvailable = online?.onlineAvailable === true;
+  const onlineStatusText = ai?.onlineDataStatus ||
+    (onlineAvailable
+      ? "اطلاعات آنلاین دریافت و در تحلیل لحاظ شده است."
+      : "اطلاعات آنلاین قابل دریافت نیست؛ تحلیل بر اساس متن RFQ و سیگنال‌های موجود انجام شده است.");
+
   return (
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ ...secTitle, marginBottom: 10 }}>
@@ -34,77 +41,99 @@ export default function BackgroundCheckCard({ ai }) {
           </>
         )}
 
-        {!!ai?.backgroundCheckOnline && (
+        {!!online && (
           <>
             <div style={divider} />
 
             <div>
-              <strong>اطلاعات تخمینی آنلاین شرکت:</strong>
+              <strong>{onlineAvailable ? "اطلاعات آنلاین شرکت:" : "اطلاعات تخمینی شرکت:"}</strong>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  marginBottom: 10,
+                  display: "inline-block",
+                  padding: "3px 10px",
+                  borderRadius: 20,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: onlineAvailable
+                    ? "rgba(16,185,129,0.15)"
+                    : "rgba(245,158,11,0.15)",
+                  color: onlineAvailable ? "#34d399" : "#fbbf24",
+                }}
+              >
+                {onlineAvailable ? "Online data available" : "Online data unavailable"}
+              </div>
+
+              <div style={{ color: "#94a3b8", marginBottom: 8 }}>
+                {onlineStatusText}
+              </div>
 
               <div style={{ marginTop: 10 }}>
                 <div>
                   نوع شرکت:
                   <strong style={{ marginRight: 6 }}>
-                    {ai.backgroundCheckOnline.companyType || "نامشخص"}
+                    {online.companyType || "نامشخص"}
                   </strong>
                 </div>
 
                 <div>
                   حوزه فعالیت:
                   <strong style={{ marginRight: 6 }}>
-                    {ai.backgroundCheckOnline.industry || "نامشخص"}
+                    {online.industry || "نامشخص"}
                   </strong>
                 </div>
 
                 <div>
                   منطقه جغرافیایی:
                   <strong style={{ marginRight: 6 }}>
-                    {ai.backgroundCheckOnline.geography || "نامشخص"}
+                    {online.geography || "نامشخص"}
                   </strong>
                 </div>
 
                 <div>
                   اندازه تقریبی شرکت:
                   <strong style={{ marginRight: 6 }}>
-                    {ai.backgroundCheckOnline.estimatedSize || "نامشخص"}
+                    {online.estimatedSize || "نامشخص"}
                   </strong>
                 </div>
 
                 <div>
                   سطح اطمینان:
                   <strong style={{ marginRight: 6 }}>
-                    {ai.backgroundCheckOnline.confidence || "low"}
+                    {online.confidence || "low"}
                   </strong>
                 </div>
               </div>
-            </div>
 
-            {!!ai?.backgroundCheckOnline?.onlineSignals?.length && (
-              <>
-                <div style={divider} />
+              {!!online?.onlineSignals?.length && (
+                <>
+                  <div style={divider} />
 
-                <div>
-                  <strong>سیگنال‌های شناسایی‌شده:</strong>
+                  <div>
+                    <strong>{onlineAvailable ? "سیگنال‌های آنلاین شناسایی‌شده:" : "سیگنال‌های استخراج‌شده از متن RFQ:"}</strong>
 
-                  <div style={{ marginTop: 10 }}>
-                    {ai.backgroundCheckOnline.onlineSignals.map((signal, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          marginBottom: 8,
-                          padding: 10,
-                          border: `1px solid ${bdr}`,
-                          borderRadius: 8,
-                          background: "rgba(255,255,255,0.02)",
-                        }}
-                      >
-                        {signal}
-                      </div>
-                    ))}
+                    <div style={{ marginTop: 10 }}>
+                      {online.onlineSignals.map((signal, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            marginBottom: 8,
+                            padding: 10,
+                            border: `1px solid ${bdr}`,
+                            borderRadius: 8,
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          {signal}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </>
         )}
       </div>

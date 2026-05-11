@@ -11,6 +11,7 @@ export function buildRfqPrompt({
   brandStats,
   winChance,
   extractedRfq,
+  companySearch,
 }) {
   const extractedItems = extractedRfq?.items || [];
 
@@ -50,11 +51,13 @@ Pricing rules:
 - If pricing is uncertain, return a cautious range and mention uncertainty inside pricingNotes.
 
 Company background rules:
-- Company background should be estimated intelligently from customer name, RFQ content, industry clues, geography clues, email signatures and industrial terminology.
-- Never claim guaranteed or verified web search.
-- If there are recognizable industrial/company signals, estimate probable industry, company type, geography and approximate company size.
+- If online company enrichment exists, use it as the PRIMARY source for backgroundCheckOnline.
+- If online enrichment is unavailable, clearly mention that online information could not be retrieved.
+- When online data is unavailable, fall back to intelligent estimation using RFQ text, industrial terminology, email signatures, geography clues and company naming patterns.
+- Never pretend that online information exists when it does not.
 - Mention confidence level honestly.
 - background check explanations must be written in Persian.
+- onlineSignals should contain short meaningful business/industry/company signals.
 
 Similar purchase rule:
 - If similar brand, part number, or product category appears in uploaded files and has ended in Purchase or sold opportunity, mention it clearly.
@@ -112,6 +115,14 @@ level=${winChance.level}
 factors=${(winChance.factors || []).join(" | ")}
 explanation=${winChance.explanation}
 
+Online company enrichment:
+online_available=${companySearch?.onlineAvailable ? "yes" : "no"}
+cache_hit=${companySearch?.cacheHit ? "yes" : "no"}
+search_summary=${companySearch?.answer || "اطلاعات آنلاین قابل دریافت نیست"}
+search_results=${JSON.stringify(companySearch?.results || [])}
+search_error=${companySearch?.error || "none"}
+searched_at=${companySearch?.searchedAt || "unknown"}
+
 Important pricing and sourcing output requirement:
 - estimatedTotalChina must summarize the full RFQ estimated total for China sourcing.
 - estimatedTotalUAE must summarize the full RFQ estimated total for UAE market pricing.
@@ -137,6 +148,7 @@ JSON schema:
   "estimatedTotalUAE": "",
   "pricingNotes": "",
   "backgroundCheckOnline": {
+    "onlineAvailable": true,
     "companyType": "",
     "industry": "",
     "geography": "",
@@ -145,6 +157,7 @@ JSON schema:
     "onlineSignals": []
   },
   "backgroundSummary": "",
+  "onlineDataStatus": "",
   "customerBackgroundCheck": "",
   "brandProductReview": {
     "brandAttractiveness": "",
