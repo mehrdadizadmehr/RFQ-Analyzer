@@ -24,6 +24,16 @@ export const AUTO_EXCEL_FILES = [
     label: "Request 2026",
     path: "/data/request_2026.xlsx",
   },
+  {
+    key: "suppliers",
+    label: "Supplier List",
+    path: "/data/supplier-list.csv",
+  },
+  {
+    key: "supplierWinners",
+    label: "Supplier Winners",
+    path: "/data/supplier-winners-2025.csv",
+  },
 ];
 
 export function delay(ms) {

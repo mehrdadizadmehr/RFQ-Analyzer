@@ -1,9 +1,36 @@
 import { card, secTitle, bar, bg3, bdr, btn } from "../styles/theme";
 
 const FILE_FIELDS = [
-  { key: "purchase", label: "Purchase 2025", desc: "سوابق خرید", icon: "💰" },
-  { key: "req25", label: "Request 2025", desc: "درخواست‌ها", icon: "📋" },
-  { key: "req26", label: "Request 2026", desc: "درخواست‌ها", icon: "📋" },
+  {
+    key: "purchase",
+    label: "Purchase 2025",
+    desc: "سوابق خرید",
+    icon: "💰",
+  },
+  {
+    key: "req25",
+    label: "Request 2025",
+    desc: "درخواست‌ها",
+    icon: "📋",
+  },
+  {
+    key: "req26",
+    label: "Request 2026",
+    desc: "درخواست‌ها",
+    icon: "📋",
+  },
+  {
+    key: "suppliers",
+    label: "Supplier List",
+    desc: "Supplier Master Data",
+    icon: "🏭",
+  },
+  {
+    key: "supplierWinners",
+    label: "Supplier Winners",
+    desc: "سوابق تامین‌کننده‌های برنده",
+    icon: "🏆",
+  },
 ];
 
 export default function FileUploadCard({ fileLabels, loadFile, apiTested, testApi }) {
@@ -14,7 +41,13 @@ export default function FileUploadCard({ fileLabels, loadFile, apiTested, testAp
         تنظیمات — فایل‌ها و موتورهای تحلیل
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+          gap: 12,
+        }}
+      >
         {FILE_FIELDS.map(f => (
           <label
             key={f.key}
@@ -37,6 +70,20 @@ export default function FileUploadCard({ fileLabels, loadFile, apiTested, testAp
             <div style={{ fontSize: 24, marginBottom: 6 }}>{f.icon}</div>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{f.label}</div>
             <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>{f.desc}</div>
+
+            {(f.key === "suppliers" || f.key === "supplierWinners") && (
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#94a3b8",
+                  marginBottom: 6,
+                  lineHeight: 1.6,
+                }}
+              >
+                مورد استفاده در Supplier Intelligence Engine
+              </div>
+            )}
+
             <div style={{ fontSize: 11, color: fileLabels[f.key] ? "#34d399" : "#64748b" }}>
               {fileLabels[f.key] || "کلیک برای انتخاب"}
             </div>

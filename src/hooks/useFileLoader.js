@@ -3,8 +3,20 @@ import { AUTO_EXCEL_FILES } from "../constants/rfq";
 import { readExcelFile, readExcelFromUrl } from "../utils/excel";
 
 export function useFileLoader(showToast) {
-  const [files, setFiles] = useState({ purchase: null, req25: null, req26: null });
-  const [fileLabels, setFileLabels] = useState({ purchase: "", req25: "", req26: "" });
+  const [files, setFiles] = useState({
+    purchase: null,
+    req25: null,
+    req26: null,
+    suppliers: null,
+    supplierWinners: null,
+  });
+  const [fileLabels, setFileLabels] = useState({
+    purchase: "",
+    req25: "",
+    req26: "",
+    suppliers: "",
+    supplierWinners: "",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +52,13 @@ export function useFileLoader(showToast) {
       showToast("خطا: " + err.message);
     }
   }, [showToast]);
+
+  useEffect(() => {
+    console.log("Loaded file keys:", Object.keys(files || {}));
+
+    console.log("Supplier rows:", files?.suppliers?.length || 0);
+    console.log("Supplier winner rows:", files?.supplierWinners?.length || 0);
+  }, [files]);
 
   return { files, fileLabels, loadFile };
 }
