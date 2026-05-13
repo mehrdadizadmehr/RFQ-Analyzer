@@ -1,4 +1,16 @@
 import { card, secTitle, bar, textBox, divider } from "../../styles/theme";
+import { formatMoney } from "../../utils/numbers";
+
+function BrandStatLine({ label, value, muted = false }) {
+  return (
+    <div style={{ color: muted ? "#94a3b8" : "#cbd5e1" }}>
+      {label}
+      <strong style={{ marginRight: 6, color: "#e2e8f0" }}>
+        {value}
+      </strong>
+    </div>
+  );
+}
 
 export default function BrandStatsCard({ brandStats, ai }) {
   const brandDemandStats = brandStats?.brandDemandStats || [];
@@ -69,56 +81,63 @@ export default function BrandStatsCard({ brandStats, ai }) {
                       }}
                     >
                       {b.totalSuccessfulCount > 0
-                        ? "سابقه موفق دارد"
-                        : "بدون خرید موفق مشابه"}
+                        ? "سابقه خرید واقعی دارد"
+                        : "خرید واقعی ثبت‌شده ندارد"}
                     </span>
                   </div>
 
-                  <div>
-                    درخواست‌های همین مشتری:
-                    <strong style={{ marginRight: 6 }}>
-                      {b.currentCustomerRequestCount || 0}
-                    </strong>
-                  </div>
+                  <BrandStatLine
+                    label="درخواست‌های همین مشتری:"
+                    value={b.currentCustomerRequestCount || 0}
+                  />
 
-                  <div>
-                    خرید / فروش موفق همین مشتری:
-                    <strong style={{ marginRight: 6 }}>
-                      {b.currentCustomerSuccessfulCount || 0}
-                    </strong>
-                  </div>
+                  <BrandStatLine
+                    label="خرید واقعی همین مشتری:"
+                    value={b.currentCustomerSuccessfulCount || 0}
+                  />
 
-                  <div>
-                    درخواست‌های سایر مشتریان:
-                    <strong style={{ marginRight: 6 }}>
-                      {b.otherCustomersRequestCount || 0}
-                    </strong>
-                  </div>
+                  <BrandStatLine
+                    label="درخواست‌های سایر مشتریان:"
+                    value={b.otherCustomersRequestCount || 0}
+                  />
 
-                  <div>
-                    خرید / فروش موفق سایر مشتریان:
-                    <strong style={{ marginRight: 6 }}>
-                      {b.otherCustomersSuccessfulCount || 0}
-                    </strong>
-                  </div>
+                  <BrandStatLine
+                    label="خرید واقعی سایر مشتریان:"
+                    value={b.otherCustomersSuccessfulCount || 0}
+                  />
 
-                  <div style={{ marginTop: 6, color: "#94a3b8" }}>
-                    جمع کل درخواست‌های این برند در فایل‌ها:
-                    <strong style={{ marginRight: 6 }}>
-                      {b.totalRequestCount || 0}
-                    </strong>
-                    {" | "}
-                    جمع کل موفق‌ها:
-                    <strong style={{ marginRight: 6 }}>
-                      {b.totalSuccessfulCount || 0}
-                    </strong>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      paddingTop: 8,
+                      borderTop: "1px solid rgba(255,255,255,0.06)",
+                      color: "#94a3b8",
+                    }}
+                  >
+                    <BrandStatLine
+                      label="جمع کل درخواست‌های این برند:"
+                      value={b.totalRequestCount || 0}
+                      muted
+                    />
+
+                    <BrandStatLine
+                      label="جمع کل خریدهای واقعی این برند:"
+                      value={b.totalSuccessfulCount || 0}
+                      muted
+                    />
+
+                    <BrandStatLine
+                      label="Revenue شناسایی‌شده برای این برند:"
+                      value={formatMoney(b.totalRevenue || 0)}
+                      muted
+                    />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div style={{ marginTop: 10, color: "#fbbf24" }}>
-              برند قابل اتکایی از متن RFQ با سوابق فایل‌ها match نشد.
+              برند قابل اتکایی از متن RFQ با سوابق تجاری فایل‌ها match نشد. اگر RFQ شامل category مثل MOTOR یا SENSOR باشد، به‌عنوان برند نمایش داده نمی‌شود.
             </div>
           )}
         </div>
@@ -155,7 +174,7 @@ export default function BrandStatsCard({ brandStats, ai }) {
               <strong>پیشنهاد تامین‌کننده / سورسینگ:</strong>
 
               <div style={{ marginTop: 10 }}>
-                {ai.supplierSuggestions.map((s, i) => (
+                {ai.supplierSuggestions.slice(0, 3).map((s, i) => (
                   <div
                     key={i}
                     style={{

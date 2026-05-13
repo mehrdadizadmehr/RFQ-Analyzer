@@ -38,7 +38,41 @@ function looksLikeEngineeringGarbage(value) {
     "quotation",
   ];
 
+  const genericIndustrialWords = [
+    "motor",
+    "sensor",
+    "module",
+    "cable",
+    "relay",
+    "switch",
+    "valve",
+    "pump",
+    "bearing",
+    "filter",
+    "controller",
+    "transmitter",
+    "transducer",
+    "gauge",
+    "connector",
+    "terminal",
+    "fuse",
+    "breaker",
+    "contact",
+    "contactor",
+    "wire",
+    "panel",
+    "display",
+    "meter",
+    "encoder",
+    "fan",
+    "drive",
+    "inverter",
+    "power supply",
+    "plc",
+  ];
+
   if (garbageWords.includes(normalized)) return true;
+  if (genericIndustrialWords.includes(normalized)) return true;
 
   return false;
 }
@@ -296,37 +330,53 @@ export function analyzeBrandProductStats(
         );
       });
 
-      const currentCustomerSuccessfulRows = currentCustomerRows.filter(r =>
-        isSoldRow(r, statusCol)
-      );
-
-      const otherCustomerSuccessfulRows = otherCustomerRows.filter(r =>
-        isSoldRow(r, statusCol)
-      );
-
       const purchaseMatches = purchaseOnlyRows.filter(r => {
         const brandValue = normalizeText(r?.[brandCol]);
         return brandValue === brandNormalized;
       });
+
+      const currentCustomerPurchaseMatches = purchaseMatches.filter(r => {
+        const customerValue = normalizeText(r?.[customerCol]);
+
+        return (
+          normalizedCustomerName &&
+          customerValue.includes(normalizedCustomerName)
+        );
+      });
+
+      const otherCustomerPurchaseMatches = purchaseMatches.filter(r => {
+        const customerValue = normalizeText(r?.[customerCol]);
+
+        return (
+          !normalizedCustomerName ||
+          !customerValue.includes(normalizedCustomerName)
+        );
+      });
+
+      const totalRevenue = purchaseMatches.reduce(
+        (s, r) => s + parseNumber(r?.[amountCol]),
+        0
+      );
 
       return {
         brand: item.brand,
 
         currentCustomerRequestCount: currentCustomerRows.length,
         currentCustomerSuccessfulCount:
-          currentCustomerSuccessfulRows.length,
+          currentCustomerPurchaseMatches.length,
 
         otherCustomersRequestCount: otherCustomerRows.length,
         otherCustomersSuccessfulCount:
-          otherCustomerSuccessfulRows.length,
+          otherCustomerPurchaseMatches.length,
 
         totalRequestCount:
           currentCustomerRows.length + otherCustomerRows.length,
 
-        totalSuccessfulCount:
-          currentCustomerSuccessfulRows.length +
-          otherCustomerSuccessfulRows.length +
-          purchaseMatches.length,
+        totalSuccessfulCount: purchaseMatches.length,
+
+        totalRevenue,
+
+        hasRealCommercialHistory: purchaseMatches.length > 0,
       };
     });
   };
@@ -391,28 +441,16 @@ export function analyzeBrandProductStats(
     )
     .join("، ");
 
-  const topPartNames = topPartsAll
-    .slice(0, 5)
-    .map(x => `${x.name} (${x.count})`)
-    .join(", ");
-
-  const topCategoryNames = topCategoriesAll
-    .slice(0, 5)
-    .map(x => `${x.name} (${x.count})`)
-    .join(", ");
 
   return {
     topBrandsAll,
     brandDemandStats,
-    topPartsAll,
     topCategoriesAll,
 
     mentionedBrandCount: brandDemandStats.reduce(
       (s, x) => s + x.totalRequestCount,
       0
     ),
-
-    mentionedProductCount: mentionedPartRows.length,
 
     mentionedCategoryCount: mentionedCategoryRows.length,
 
@@ -434,9 +472,9 @@ export function analyzeBrandProductStats(
 
     summary:
       brandDemandStats.length > 0
-        ? `برندهای موجود در RFQ فعلی قبلاً در تاریخچه سیستم دیده شده‌اند. ${topBrandNames || ""}`
+        ? `برندهای موجود در RFQ فعلی در سوابق تجاری سیستم شناسایی شدند. ${topBrandNames || ""}`
         : similarSuccessfulPurchasesCount > 0
           ? `سوابق خرید و RFQ مشابه در فایل‌های قبلی پیدا شد.`
-          : "هیچ سابقه معناداری از برندها یا محصولات این RFQ در فایل‌های قبلی پیدا نشد.",
+          : "هیچ سابقه تجاری معناداری از برندهای این RFQ در فایل‌های قبلی پیدا نشد.",
   };
 }

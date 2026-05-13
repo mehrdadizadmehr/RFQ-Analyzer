@@ -10,6 +10,7 @@ import SummaryCard from "./SummaryCard";
 import BackgroundCheckCard from "./BackgroundCheckCard";
 import PartsTable from "./PartsTable";
 import SalesRecommendationCard from "./SalesRecommendationCard";
+import CommercialMatcherCard from "./CommercialMatcherCard";
 
 const sections = [
   {
@@ -33,6 +34,11 @@ const sections = [
     icon: "🏷️",
   },
   {
+    id: "commercial-matcher",
+    label: "اتصال خریدها",
+    icon: "🔗",
+  },
+  {
     id: "background",
     label: "بک‌گراند",
     icon: "🔎",
@@ -50,7 +56,15 @@ const sections = [
 ];
 
 export default function ResultsSection({ result }) {
-  const { ai, requestStats, purchaseStats, brandStats, winChance, errors } = result;
+  const {
+    ai,
+    requestStats,
+    purchaseStats,
+    brandStats,
+    winChance,
+    errors,
+    commercialMatcher,
+  } = result;
   const parts = ai.parts || [];
 
   const [activeSection, setActiveSection] = useState("summary");
@@ -182,6 +196,10 @@ export default function ResultsSection({ result }) {
 
         <div id="brands">
           <BrandStatsCard brandStats={brandStats} ai={ai} />
+        </div>
+
+        <div id="commercial-matcher">
+          <CommercialMatcherCard commercialMatcher={commercialMatcher} />
         </div>
 
         <div id="background">
