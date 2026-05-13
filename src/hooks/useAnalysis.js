@@ -127,6 +127,7 @@ export function useAnalysis(showToast) {
     const commercialMatcher = buildCommercialMatcher({
       requestRows: allRequestRows,
       purchaseRows: Array.isArray(files.purchase) ? files.purchase : [],
+      currentCustomer: extractedCustomer,
     });
 
     console.log("Commercial Matcher Summary:", {
@@ -138,11 +139,18 @@ export function useAnalysis(showToast) {
       revenue: commercialMatcher.totalRevenue,
       grossProfit: commercialMatcher.totalGrossProfit,
       avgMargin: commercialMatcher.averageMargin,
+      relevantMatches: commercialMatcher.relevantMatchCount,
+      relevantRevenue: commercialMatcher.relevantRevenue,
+      relevantGrossProfit: commercialMatcher.relevantGrossProfit,
+      relevantAverageMargin: commercialMatcher.relevantAverageMargin,
+      relevantSuppliers: commercialMatcher.topRelevantSuppliers,
+      relevantBrands: commercialMatcher.topRelevantBrands,
     });
 
     requestStats = enrichCustomerRequestStatsWithPurchases(
       requestStats,
-      purchaseStats
+      purchaseStats,
+      commercialMatcher
     );
 
     setStepState("s2", "done");

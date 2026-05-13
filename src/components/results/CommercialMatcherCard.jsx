@@ -1,3 +1,4 @@
+
 import { card, secTitle, bar, textBox, divider } from "../../styles/theme";
 import { formatMoney } from "../../utils/numbers";
 
@@ -58,26 +59,52 @@ function MatchReason({ reason }) {
   );
 }
 
-export default function CommercialMatcherCard({ commercialMatcher }) {
-  if (!commercialMatcher) {
-    return null;
-  }
+function MiniList({ title, items }) {
+  if (!Array.isArray(items) || items.length === 0) return null;
 
-  const matches = commercialMatcher.matches || [];
-  const topMatches = matches
+  return (
+    <div>
+      <strong>{title}</strong>
+      <div style={{ marginTop: 8 }}>
+        {items.map((x, i) => (
+          <span
+            key={`${x}-${i}`}
+            style={{
+              display: "inline-block",
+              margin: "3px 4px",
+              padding: "3px 9px",
+              borderRadius: 20,
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              color: "#cbd5e1",
+              direction: "ltr",
+            }}
+          >
+            {x}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function CommercialMatcherCard({ commercialMatcher }) {
+  if (!commercialMatcher) return null;
+
+  const relevantMatches = commercialMatcher.relevantMatches || [];
+
+  const topRelevantMatches = relevantMatches
     .filter(m => m.matchedRequest)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  const matchRate = matches.length
-    ? Math.round((commercialMatcher.matchedCount / matches.length) * 100)
-    : 0;
+  const hasRelevantData = relevantMatches.length > 0;
 
   return (
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ ...secTitle, marginBottom: 10 }}>
         <div style={bar} />
-        🔗 تحلیل اتصال Request ↔ Purchase
+        🔗 سوابق تجاری مرتبط با این RFQ
       </div>
 
       <div
@@ -89,8 +116,7 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
         }}
       >
         <div>
-          این بخش تلاش می‌کند ردیف‌های فایل Purchase را به ردیف‌های متناظر در فایل‌های
-          Request وصل کند. اتصال بر اساس Request Code، PI Number، مشتری، برند و مبلغ انجام می‌شود.
+          این بخش فقط خریدها و فروش‌هایی را نشان می‌دهد که به مشتری فعلی یا برندهای مرتبط با RFQ فعلی نزدیک هستند. آمار کلی فایل‌ها اینجا ملاک تصمیم نیست؛ ملاک، ارتباط واقعی با همین درخواست است.
         </div>
 
         <div style={divider} />
@@ -100,162 +126,146 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
             display: "grid",
             gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
             gap: 10,
-            marginBottom: 12,
           }}
         >
-          <StatBox label="کل Purchaseها" value={matches.length || 0} />
           <StatBox
-            label="Match شده"
-            value={`${commercialMatcher.matchedCount || 0} (${matchRate}%)`}
-            tone="green"
+            label="Match مرتبط با این RFQ"
+            value={commercialMatcher.relevantMatchCount || 0}
+            tone={hasRelevantData ? "green" : "yellow"}
           />
-          <StatBox
-            label="بدون Match"
-            value={commercialMatcher.unmatchedCount || 0}
-            tone={commercialMatcher.unmatchedCount > 0 ? "yellow" : "green"}
-          />
-          <StatBox
-            label="High Confidence"
-            value={commercialMatcher.highConfidenceCount || 0}
-            tone="green"
-          />
-        </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 10,
-          }}
-        >
           <StatBox
-            label="Revenue شناسایی‌شده"
-            value={formatMoney(commercialMatcher.totalRevenue || 0)}
-            tone="green"
+            label="Revenue مرتبط"
+            value={formatMoney(commercialMatcher.relevantRevenue || 0)}
+            tone={hasRelevantData ? "green" : "default"}
           />
+
           <StatBox
-            label="Cost شناسایی‌شده"
-            value={formatMoney(commercialMatcher.totalCost || 0)}
+            label="Gross Profit مرتبط"
+            value={formatMoney(commercialMatcher.relevantGrossProfit || 0)}
+            tone={hasRelevantData ? "green" : "default"}
           />
+
           <StatBox
-            label="Gross Profit"
-            value={formatMoney(commercialMatcher.totalGrossProfit || 0)}
-            tone="green"
-          />
-          <StatBox
-            label="Average Margin"
-            value={`${commercialMatcher.averageMargin || 0}%`}
-            tone={commercialMatcher.averageMargin >= 20 ? "green" : "yellow"}
+            label="Margin مرتبط"
+            value={`${commercialMatcher.relevantAverageMargin || 0}%`}
+            tone={commercialMatcher.relevantAverageMargin >= 20 ? "green" : "yellow"}
           />
         </div>
 
         <div style={divider} />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            gap: 10,
-          }}
-        >
-          <StatBox
-            label="Medium Confidence"
-            value={commercialMatcher.mediumConfidenceCount || 0}
-            tone="yellow"
-          />
-          <StatBox
-            label="Low Confidence"
-            value={commercialMatcher.lowConfidenceCount || 0}
-            tone="red"
-          />
-          <StatBox
-            label="Confidence Quality"
-            value={
-              commercialMatcher.highConfidenceCount >= commercialMatcher.mediumConfidenceCount
-                ? "Good"
-                : "Needs Review"
-            }
-            tone={
-              commercialMatcher.highConfidenceCount >= commercialMatcher.mediumConfidenceCount
-                ? "green"
-                : "yellow"
-            }
-          />
-        </div>
-
-        {topMatches.length > 0 && (
+        {hasRelevantData ? (
           <>
-            <div style={divider} />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <MiniList
+                title="Supplierهای مرتبط قبلی:"
+                items={commercialMatcher.topRelevantSuppliers}
+              />
 
-            <div>
-              <strong>نمونه بهترین Matchها:</strong>
+              <MiniList
+                title="برندهای مرتبط قبلی:"
+                items={commercialMatcher.topRelevantBrands}
+              />
+            </div>
 
-              <div style={{ marginTop: 10 }}>
-                {topMatches.map((m, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      marginBottom: 10,
-                      padding: 12,
-                      borderRadius: 10,
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                        marginBottom: 8,
-                      }}
-                    >
-                      <strong style={{ color: "#e2e8f0" }}>
-                        Purchase Row #{m.purchaseIndex + 1}
-                      </strong>
+            {topRelevantMatches.length > 0 && (
+              <>
+                <div style={divider} />
 
-                      <span
+                <div>
+                  <strong>نمونه سوابق مرتبط:</strong>
+
+                  <div style={{ marginTop: 10 }}>
+                    {topRelevantMatches.map((m, i) => (
+                      <div
+                        key={i}
                         style={{
-                          padding: "2px 10px",
-                          borderRadius: 20,
-                          fontSize: 11,
-                          background:
-                            m.confidence === "high"
-                              ? "rgba(16,185,129,0.15)"
-                              : m.confidence === "medium"
-                                ? "rgba(245,158,11,0.15)"
-                                : "rgba(239,68,68,0.15)",
-                          color:
-                            m.confidence === "high"
-                              ? "#34d399"
-                              : m.confidence === "medium"
-                                ? "#fbbf24"
-                                : "#f87171",
+                          marginBottom: 10,
+                          padding: 12,
+                          borderRadius: 10,
+                          background: "rgba(255,255,255,0.02)",
+                          border: "1px solid rgba(255,255,255,0.06)",
                         }}
                       >
-                        {m.confidence} | score {m.score}
-                      </span>
-                    </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            flexWrap: "wrap",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <strong style={{ color: "#e2e8f0" }}>
+                            Purchase Row #{m.purchaseIndex + 1}
+                          </strong>
 
-                    <div style={{ color: "#94a3b8", marginBottom: 8 }}>
-                      Revenue: {formatMoney(m.commercialInsights?.revenue || 0)} | Profit:{" "}
-                      {formatMoney(m.commercialInsights?.grossProfit || 0)} | Margin:{" "}
-                      {m.commercialInsights?.marginPercent || 0}% | Supplier:{" "}
-                      {m.commercialInsights?.supplier || "—"}
-                    </div>
+                          <span
+                            style={{
+                              padding: "2px 10px",
+                              borderRadius: 20,
+                              fontSize: 11,
+                              background:
+                                m.confidence === "high"
+                                  ? "rgba(16,185,129,0.15)"
+                                  : m.confidence === "medium"
+                                    ? "rgba(245,158,11,0.15)"
+                                    : "rgba(239,68,68,0.15)",
+                              color:
+                                m.confidence === "high"
+                                  ? "#34d399"
+                                  : m.confidence === "medium"
+                                    ? "#fbbf24"
+                                    : "#f87171",
+                            }}
+                          >
+                            {m.confidence} | score {m.score}
+                          </span>
+                        </div>
 
-                    <div>
-                      {(m.matchReasons || []).map(reason => (
-                        <MatchReason key={reason} reason={reason} />
-                      ))}
-                    </div>
+                        <div style={{ color: "#94a3b8", marginBottom: 8 }}>
+                          Brand: {m.commercialInsights?.brand || "—"} | Supplier:{" "}
+                          {m.commercialInsights?.supplier || "—"} | Revenue:{" "}
+                          {formatMoney(m.commercialInsights?.revenue || 0)} | Profit:{" "}
+                          {formatMoney(m.commercialInsights?.grossProfit || 0)} | Margin:{" "}
+                          {m.commercialInsights?.marginPercent || 0}%
+                        </div>
+
+                        <div style={{ color: "#64748b", marginBottom: 8, direction: "ltr", textAlign: "left" }}>
+                          PI: {m.commercialInsights?.purchasePi || "—"} | Request Code:{" "}
+                          {m.commercialInsights?.requestCode || "—"}
+                        </div>
+
+                        <div>
+                          {(m.matchReasons || []).map(reason => (
+                            <MatchReason key={reason} reason={reason} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </>
+        ) : (
+          <div style={{ color: "#fbbf24" }}>
+            برای مشتری یا برندهای این RFQ، سابقه خرید مرتبط قابل اتکایی در فایل Purchase پیدا نشد. این به معنی نبودن درخواست‌های قبلی نیست؛ یعنی خرید واقعی مرتبط از روی matcher شناسایی نشده است.
+          </div>
         )}
+
+        <div style={divider} />
+
+        <div style={{ color: "#64748b", fontSize: 12 }}>
+          آمار کلی matcher برای کنترل کیفیت: کل Matchها {commercialMatcher.matchedCount || 0} از {(commercialMatcher.matches || []).length || 0} Purchase row | High confidence: {commercialMatcher.highConfidenceCount || 0} | Medium: {commercialMatcher.mediumConfidenceCount || 0} | Low: {commercialMatcher.lowConfidenceCount || 0}
+        </div>
       </div>
     </div>
   );
