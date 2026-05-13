@@ -145,15 +145,22 @@ export function buildSupplierIntelligence({
         successfulPurchaseAmount: 0,
       };
 
+      const exactBrandPurchaseStrength =
+        stats.successfulPurchaseCount * 12 +
+        Math.log10(stats.successfulPurchaseAmount + 1) * 8;
+
       let score = 0;
 
-      if (brandMatched) score += 50;
-      score += Math.min(25, stats.successfulPurchaseCount * 5);
-      score += Math.min(
-        20,
-        Math.log10(stats.successfulPurchaseAmount + 1) * 4
-      );
-      if (s.website || s.store) score += 5;
+      // Exact RFQ brand match is the highest priority
+      if (brandMatched) score += 120;
+
+      // Historical successful purchases are the second highest priority
+      score += Math.min(120, exactBrandPurchaseStrength);
+
+      // Supplier completeness bonus
+      if (s.website) score += 8;
+      if (s.store) score += 5;
+      if (s.country) score += 3;
 
       return {
         ...s,
@@ -161,19 +168,57 @@ export function buildSupplierIntelligence({
         successfulPurchaseCount: stats.successfulPurchaseCount,
         successfulPurchaseAmount: stats.successfulPurchaseAmount,
         score: Math.round(score),
+        exactBrandPurchaseStrength: Math.round(
+          exactBrandPurchaseStrength
+        ),
         priority:
           score >= 70 ? "High" : score >= 40 ? "Medium" : "Low",
       };
     })
     .filter(s => s.brandMatched || s.successfulPurchaseCount > 0)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      // First priority: exact RFQ brand suppliers
+      if (a.brandMatched !== b.brandMatched) {
+        return a.brandMatched ? -1 : 1;
+      }
+
+      // Second priority: suppliers with more successful purchases
+      if (
+        a.successfulPurchaseCount !==
+        b.successfulPurchaseCount
+      ) {
+        return (
+          b.successfulPurchaseCount -
+          a.successfulPurchaseCount
+        );
+      }
+
+      // Third priority: suppliers with larger historical purchase amounts
+      if (
+        a.successfulPurchaseAmount !==
+        b.successfulPurchaseAmount
+      ) {
+        return (
+          b.successfulPurchaseAmount -
+          a.successfulPurchaseAmount
+        );
+      }
+
+      // Final fallback: overall score
+      return b.score - a.score;
+    });
+
+  const topBrandSuppliers = rankedSuppliers.filter(
+    s => s.brandMatched
+  );
 
   return {
     targetBrands,
     totalSuppliers: suppliers.length,
     totalWinnerRows: winners.length,
     rankedSuppliers,
-    topSuppliers: rankedSuppliers.slice(0, 10),
+    topBrandSuppliers,
+    topSuppliers: topBrandSuppliers.slice(0, 15),
     brandMatchedSuppliers: rankedSuppliers.filter(s => s.brandMatched),
     purchasedSuppliers: rankedSuppliers.filter(
       s => s.successfulPurchaseCount > 0

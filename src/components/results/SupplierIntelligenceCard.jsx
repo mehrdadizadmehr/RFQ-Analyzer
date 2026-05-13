@@ -1,5 +1,3 @@
-
-
 import { card, secTitle, bar, divider } from "../../styles/theme";
 
 function formatMoney(value) {
@@ -78,7 +76,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
           fontSize: 13,
         }}
       >
-        این بخش بر اساس سوابق واقعی خرید، Supplier Winnerها و برندهای RFQ فعلی ساخته می‌شود. تامین‌کننده‌ها بر اساس خرید موفق تاریخی، مبلغ خرید، تطابق برند و کیفیت اطلاعات رتبه‌بندی شده‌اند.
+        این بخش بر اساس سوابق واقعی خرید، Supplier Winnerها و برندهای RFQ فعلی ساخته می‌شود. تامین‌کننده‌ها بر اساس تطابق دقیق برند RFQ، تعداد خرید موفق، مبلغ خرید تاریخی و کیفیت اطلاعات رتبه‌بندی شده‌اند.
       </div>
 
       <div
@@ -138,7 +136,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
           }}
         >
           <div style={{ color: "#64748b", fontSize: 12 }}>
-            Supplierهای شناسایی‌شده
+            تامین‌کننده‌های برتر این برند
           </div>
 
           <div
@@ -228,9 +226,11 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                     value={formatMoney(supplier.successfulPurchaseAmount)}
                   />
 
+                  <InfoLine label="Score" value={supplier.score} />
+
                   <InfoLine
-                    label="Score"
-                    value={supplier.score}
+                    label="Brand Match Strength"
+                    value={supplier.exactBrandPurchaseStrength}
                   />
                 </div>
 
@@ -245,10 +245,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                     value={supplier.website}
                   />
 
-                  <InfoLine
-                    label="Store"
-                    value={supplier.store}
-                  />
+                  <InfoLine label="Store" value={supplier.store} />
                 </div>
               </div>
 
@@ -273,9 +270,14 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                         style={{
                           padding: "4px 10px",
                           borderRadius: 20,
-                          background: "rgba(148,163,184,0.12)",
-                          color: "#cbd5e1",
+                          background: supplier.brandMatched
+                            ? "rgba(16,185,129,0.15)"
+                            : "rgba(148,163,184,0.12)",
+                          color: supplier.brandMatched
+                            ? "#34d399"
+                            : "#cbd5e1",
                           fontSize: 12,
+                          fontWeight: supplier.brandMatched ? 700 : 500,
                         }}
                       >
                         {String(brand).toUpperCase()}
