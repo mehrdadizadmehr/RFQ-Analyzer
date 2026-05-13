@@ -193,7 +193,8 @@ export function analyzeBrandProductStats(
   rows26,
   purchaseRows,
   requestText,
-  customerName = ""
+  customerName = "",
+  commercialMatcher = null
 ) {
   const requestRows = [...(rows25 || []), ...(rows26 || [])];
   const purchaseOnlyRows = [...(purchaseRows || [])];
@@ -302,6 +303,9 @@ export function analyzeBrandProductStats(
 
   const mentionedBrands = extractMentionedBrands();
 
+  const matcherRelevantMatches =
+    commercialMatcher?.relevantMatches || [];
+
   const buildBrandDemandStats = () => {
     if (!brandCol || !mentionedBrands.length) return [];
 
@@ -330,31 +334,40 @@ export function analyzeBrandProductStats(
         );
       });
 
-      const purchaseMatches = purchaseOnlyRows.filter(r => {
-        const brandValue = normalizeText(r?.[brandCol]);
-        return brandValue === brandNormalized;
-      });
-
-      const currentCustomerPurchaseMatches = purchaseMatches.filter(r => {
-        const customerValue = normalizeText(r?.[customerCol]);
-
-        return (
-          normalizedCustomerName &&
-          customerValue.includes(normalizedCustomerName)
+      const relevantCommercialMatches = matcherRelevantMatches.filter(m => {
+        const matchBrand = normalizeText(
+          m?.commercialInsights?.brand
         );
+
+        return matchBrand === brandNormalized;
       });
 
-      const otherCustomerPurchaseMatches = purchaseMatches.filter(r => {
-        const customerValue = normalizeText(r?.[customerCol]);
+      const currentCustomerPurchaseMatches =
+        relevantCommercialMatches.filter(m => {
+          const customerValue = normalizeText(
+            m?.commercialInsights?.purchaseCustomer
+          );
 
-        return (
-          !normalizedCustomerName ||
-          !customerValue.includes(normalizedCustomerName)
-        );
-      });
+          return (
+            normalizedCustomerName &&
+            customerValue.includes(normalizedCustomerName)
+          );
+        });
 
-      const totalRevenue = purchaseMatches.reduce(
-        (s, r) => s + parseNumber(r?.[amountCol]),
+      const otherCustomerPurchaseMatches =
+        relevantCommercialMatches.filter(m => {
+          const customerValue = normalizeText(
+            m?.commercialInsights?.purchaseCustomer
+          );
+
+          return (
+            !normalizedCustomerName ||
+            !customerValue.includes(normalizedCustomerName)
+          );
+        });
+
+      const totalRevenue = relevantCommercialMatches.reduce(
+        (s, m) => s + (m?.commercialInsights?.revenue || 0),
         0
       );
 
@@ -372,11 +385,12 @@ export function analyzeBrandProductStats(
         totalRequestCount:
           currentCustomerRows.length + otherCustomerRows.length,
 
-        totalSuccessfulCount: purchaseMatches.length,
+        totalSuccessfulCount: relevantCommercialMatches.length,
 
         totalRevenue,
 
-        hasRealCommercialHistory: purchaseMatches.length > 0,
+        hasRealCommercialHistory:
+          relevantCommercialMatches.length > 0,
       };
     });
   };
@@ -472,7 +486,7 @@ export function analyzeBrandProductStats(
 
     summary:
       brandDemandStats.length > 0
-        ? `برندهای موجود در RFQ فعلی در سوابق تجاری سیستم شناسایی شدند. ${topBrandNames || ""}`
+        ? `برندهای RFQ فعلی در سوابق واقعی خرید و تعاملات تجاری سیستم شناسایی شدند. ${topBrandNames || ""}`
         : similarSuccessfulPurchasesCount > 0
           ? `سوابق خرید و RFQ مشابه در فایل‌های قبلی پیدا شد.`
           : "هیچ سابقه تجاری معناداری از برندهای این RFQ در فایل‌های قبلی پیدا نشد.",

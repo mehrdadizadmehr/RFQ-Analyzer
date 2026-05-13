@@ -40,7 +40,7 @@ export function enrichCustomerRequestStatsWithPurchases(
     matchedCount > 0;
 
   const effectiveConversionRate = hasRealPurchase
-    ? Math.max(conversionRate, 65)
+    ? Math.max(conversionRate, Math.min(35, conversionRate + 12))
     : conversionRate;
 
   let effectiveQuality = requestStats?.quality || "نامشخص";
@@ -53,14 +53,14 @@ export function enrichCustomerRequestStatsWithPurchases(
     effectiveQuality = "مشتری تجاری ارزشمند / سودده";
   } else if (hasRealPurchase && highConfidenceCount >= 3) {
     effectiveQuality = "مشتری خریددار با سابقه اجرای واقعی";
-  } else if (hasRealPurchase && effectiveConversionRate >= 65) {
+  } else if (hasRealPurchase && effectiveConversionRate >= 20) {
     effectiveQuality = "مشتری خریددار / با سابقه واقعی";
   } else if (hasRealPurchase) {
     effectiveQuality = "مشتری با خرید واقعی ثبت‌شده";
   }
 
   const effectiveBackground = hasRealPurchase
-    ? `${requestStats?.background || ""} علاوه بر سوابق Request، ارتباط واقعی بین Request و Purchase نیز شناسایی شده است. تعداد matchهای تجاری: ${matchedCount} مورد، matchهای high confidence: ${highConfidenceCount} مورد، مجموع فروش تخمینی: ${matcherRevenue.toLocaleString()} AED، سود ناخالص تخمینی: ${matcherGrossProfit.toLocaleString()} AED، میانگین margin: ${matcherMargin}%.`
+    ? `${requestStats?.background || ""} علاوه بر سوابق Request، ارتباط‌های واقعی بین Request و Purchase نیز شناسایی شده است. تعداد matchهای تجاری: ${matchedCount} مورد، matchهای high confidence: ${highConfidenceCount} مورد، مجموع فروش مرتبط شناسایی‌شده: ${matcherRevenue.toLocaleString()} AED، سود ناخالص تخمینی: ${matcherGrossProfit.toLocaleString()} AED، میانگین margin مرتبط: ${matcherMargin}%. این داده‌ها به معنی تبدیل 100٪ همه درخواست‌ها نیست، بلکه نشان‌دهنده وجود سابقه تجاری واقعی و تعامل خرید مستند برای این مشتری است.`
     : requestStats?.background;
 
   return {
@@ -152,18 +152,21 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
 
   let quality = "مشتری جدید / بدون سابقه کافی";
 
-  if (matched.length >= 10 && conversionRate >= 35) quality = "کیفیت بالا";
-  else if (matched.length >= 5 && conversionRate >= 20) quality = "کیفیت متوسط رو به بالا";
-  else if (matched.length >= 2 && conversionRate > 0) quality = "کیفیت متوسط";
-  else if (matched.length > 0 && conversionRate === 0) quality = "درخواست‌محور بدون تبدیل ثبت‌شده";
+  if (matched.length >= 10 && conversionRate >= 20) {
+    quality = "کیفیت بالا";
+  } else if (matched.length >= 5 && conversionRate >= 8) {
+    quality = "کیفیت متوسط رو به بالا";
+  } else if (matched.length >= 2 && conversionRate > 0) {
+    quality = "کیفیت متوسط";
+  } else if (matched.length > 0 && conversionRate === 0) {
+    quality = "درخواست‌محور بدون WIN ثبت‌شده";
+  }
 
   const brands = {};
   matched.forEach(r => {
     const b = String(r[brandCol] || "").trim();
     if (b) brands[b] = (brands[b] || 0) + 1;
   });
-
-  const topBrands = Object.entries(brands)
 
   const piIssuedCount = matched.filter(r => {
     const status = normalizeText(r[statusCol]);
@@ -175,7 +178,7 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
     );
   }).length;
 
-  const topBrandsSorted = topBrands
+  const topBrandsSorted = Object.entries(brands)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([b, count]) => `${b} (${count})`);
@@ -189,15 +192,18 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
     piIssuedCount,
     requestAmount,
     conversionRate,
-    effectiveConversionRate: conversionRate,
+    effectiveConversionRate:
+      sold.length > 0
+        ? Math.min(35, conversionRate + 10)
+        : conversionRate,
     quality,
     effectiveQuality: quality,
     topBrands: topBrandsSorted,
     background: matched.length
-      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${piIssuedCount} مورد PI/Commercial activity، ${sold.length} مورد WIN/فروش ثبت‌شده و نرخ تبدیل اولیه ${conversionRate}% در فایل Request دارد.`
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${piIssuedCount} مورد PI/Commercial activity و ${sold.length} مورد WIN/فروش ثبت‌شده در فایل Request دارد. نرخ تبدیل خام Request برابر ${conversionRate}% است و نباید با نرخ تعامل یا سوابق خرید واقعی اشتباه گرفته شود.`
       : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
     effectiveBackground: matched.length
-      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${piIssuedCount} مورد PI/Commercial activity، ${sold.length} مورد WIN/فروش ثبت‌شده و نرخ تبدیل اولیه ${conversionRate}% در فایل Request دارد.`
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${piIssuedCount} مورد PI/Commercial activity و ${sold.length} مورد WIN/فروش ثبت‌شده در فایل Request دارد. نرخ تبدیل خام Request برابر ${conversionRate}% است و نباید با نرخ تعامل یا سوابق خرید واقعی اشتباه گرفته شود.`
       : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
   };
 }

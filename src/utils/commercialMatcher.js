@@ -1,5 +1,3 @@
-
-
 function normalizeText(value) {
   return String(value || "")
     .toLowerCase()
@@ -177,6 +175,20 @@ function classifyConfidence(score) {
   return "low";
 }
 
+function extractRelevantBrandsFromRequest(requestRows = []) {
+  const brands = new Set();
+
+  requestRows.forEach(r => {
+    const brand = normalizeText(getRequestBrand(r));
+
+    if (!brand || brand.length < 2) return;
+
+    brands.add(brand);
+  });
+
+  return [...brands];
+}
+
 function buildCommercialInsights(purchaseRow, requestRow) {
   const revenue =
     cleanNumber(purchaseRow?.["Invoice Amount AED"]) ||
@@ -195,20 +207,39 @@ function buildCommercialInsights(purchaseRow, requestRow) {
     cost,
     grossProfit,
     marginPercent: Number(margin.toFixed(2)),
+
     supplier:
       purchaseRow?.["Supplier Code"] ||
       purchaseRow?.Supplier ||
       purchaseRow?.supplier ||
       "",
+
     brand: getPurchaseBrand(purchaseRow) || getRequestBrand(requestRow),
+
+    purchaseCustomer: getPurchaseCustomer(purchaseRow),
+    requestCustomer: getRequestCustomer(requestRow),
+
+    purchasePi: getPurchasePi(purchaseRow),
+    requestPi: getRequestPi(requestRow),
+
+    requestCode:
+      purchaseRow?.["Request Code"] ||
+      purchaseRow?.RequestCode ||
+      purchaseRow?.requestCode ||
+      "",
   };
 }
 
 export function buildCommercialMatcher({
   requestRows = [],
   purchaseRows = [],
+  currentCustomer = "",
 }) {
   const requestLookup = buildRequestLookup(requestRows);
+
+  const normalizedCurrentCustomer = normalizeText(currentCustomer);
+
+  const relevantBrands = extractRelevantBrandsFromRequest(requestRows);
 
   const matches = [];
 
@@ -316,6 +347,62 @@ export function buildCommercialMatcher({
 
   const matched = matches.filter(m => m.matchedRequest);
 
+  const relevantMatches = matched.filter(m => {
+    const purchaseCustomer = normalizeText(
+      m?.commercialInsights?.purchaseCustomer
+    );
+
+    const requestCustomer = normalizeText(
+      m?.commercialInsights?.requestCustomer
+    );
+
+    const brand = normalizeText(m?.commercialInsights?.brand);
+
+    const customerMatch =
+      normalizedCurrentCustomer &&
+      (
+        purchaseCustomer.includes(normalizedCurrentCustomer) ||
+        normalizedCurrentCustomer.includes(purchaseCustomer) ||
+        requestCustomer.includes(normalizedCurrentCustomer) ||
+        normalizedCurrentCustomer.includes(requestCustomer)
+      );
+
+    const brandMatch = relevantBrands.includes(brand);
+
+    return customerMatch || brandMatch;
+  });
+
+  const relevantRevenue = relevantMatches.reduce(
+    (s, m) => s + (m.commercialInsights?.revenue || 0),
+    0
+  );
+
+  const relevantGrossProfit = relevantMatches.reduce(
+    (s, m) => s + (m.commercialInsights?.grossProfit || 0),
+    0
+  );
+
+  const relevantAverageMargin =
+    relevantRevenue > 0
+      ? Number(((relevantGrossProfit / relevantRevenue) * 100).toFixed(2))
+      : 0;
+
+  const topRelevantSuppliers = [
+    ...new Set(
+      relevantMatches
+        .map(m => m?.commercialInsights?.supplier)
+        .filter(Boolean)
+    ),
+  ].slice(0, 5);
+
+  const topRelevantBrands = [
+    ...new Set(
+      relevantMatches
+        .map(m => m?.commercialInsights?.brand)
+        .filter(Boolean)
+    ),
+  ].slice(0, 5);
+
   const totalRevenue = matched.reduce(
     (s, m) => s + (m.commercialInsights?.revenue || 0),
     0
@@ -341,6 +428,13 @@ export function buildCommercialMatcher({
       .length,
     lowConfidenceCount: matches.filter(m => m.confidence === "low")
       .length,
+    relevantMatches,
+    relevantMatchCount: relevantMatches.length,
+    relevantRevenue,
+    relevantGrossProfit,
+    relevantAverageMargin,
+    topRelevantSuppliers,
+    topRelevantBrands,
     totalRevenue,
     totalCost,
     totalGrossProfit,

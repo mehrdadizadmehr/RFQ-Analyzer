@@ -163,7 +163,8 @@ export function useAnalysis(showToast) {
       files.req26,
       files.purchase,
       normalizedRequestText,
-      extractedCustomer
+      extractedCustomer,
+      commercialMatcher
     );
 
     let companySearch = null;
