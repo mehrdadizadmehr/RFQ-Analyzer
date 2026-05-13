@@ -124,10 +124,23 @@ export function useAnalysis(showToast) {
       ...(Array.isArray(files.req26) ? files.req26 : []),
     ];
 
+    const currentBrands = Array.isArray(extractedRfqData?.items)
+      ? [
+          ...new Set(
+            extractedRfqData.items
+              .map(i => i?.manufacturer || i?.brand)
+              .filter(Boolean)
+          ),
+        ]
+      : [];
+
     const commercialMatcher = buildCommercialMatcher({
       requestRows: allRequestRows,
       purchaseRows: Array.isArray(files.purchase) ? files.purchase : [],
       currentCustomer: extractedCustomer,
+      currentBrands,
+      manualPurchaseCount,
+      manualPurchaseAmount,
     });
 
     console.log("Commercial Matcher Summary:", {
@@ -145,6 +158,13 @@ export function useAnalysis(showToast) {
       relevantAverageMargin: commercialMatcher.relevantAverageMargin,
       relevantSuppliers: commercialMatcher.topRelevantSuppliers,
       relevantBrands: commercialMatcher.topRelevantBrands,
+      currentBrands: commercialMatcher.currentBrands,
+      manualPurchaseCount: commercialMatcher.manualPurchaseCount,
+      manualPurchaseAmount: commercialMatcher.manualPurchaseAmount,
+      totalRelevantPurchaseCount:
+        commercialMatcher.totalRelevantPurchaseCount,
+      totalRelevantRevenueWithManual:
+        commercialMatcher.totalRelevantRevenueWithManual,
     });
 
     requestStats = enrichCustomerRequestStatsWithPurchases(

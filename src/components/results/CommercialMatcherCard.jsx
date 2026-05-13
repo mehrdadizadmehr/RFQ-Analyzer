@@ -87,10 +87,24 @@ function MiniList({ title, items }) {
   );
 }
 
+function InfoLine({ label, value }) {
+  if (value === undefined || value === null || value === "") return null;
+
+  return (
+    <div>
+      <strong>{label}:</strong> {value}
+    </div>
+  );
+}
+
 export default function CommercialMatcherCard({ commercialMatcher }) {
   if (!commercialMatcher) return null;
 
   const relevantMatches = commercialMatcher.relevantMatches || [];
+
+  const currentBrands = (
+    commercialMatcher.currentBrands || []
+  ).map(x => String(x).toLowerCase());
 
   const topRelevantMatches = relevantMatches
     .filter(m => {
@@ -102,8 +116,7 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
 
       return (
         brand &&
-        brand !== "miscellaneous" &&
-        brand !== "multibrand"
+        currentBrands.includes(brand)
       );
     })
     .sort((a, b) => {
@@ -115,6 +128,22 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
     .slice(0, 5);
 
   const hasRelevantData = relevantMatches.length > 0;
+
+  const totalHistoricalPurchases =
+    commercialMatcher.totalRelevantPurchaseCount ||
+    commercialMatcher.relevantMatchCount ||
+    0;
+
+  const totalHistoricalRevenue =
+    commercialMatcher.totalRelevantRevenueWithManual ||
+    commercialMatcher.relevantRevenue ||
+    0;
+
+  const manualPurchaseCount =
+    commercialMatcher.manualPurchaseCount || 0;
+
+  const manualPurchaseAmount =
+    commercialMatcher.manualPurchaseAmount || 0;
 
   return (
     <div style={{ ...card, marginBottom: 14 }}>
@@ -145,21 +174,21 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
           }}
         >
           <StatBox
-            label="سوابق تجاری مرتبط"
-            value={commercialMatcher.relevantMatchCount || 0}
+            label="خریدهای واقعی مرتبط"
+            value={totalHistoricalPurchases}
             tone={hasRelevantData ? "green" : "yellow"}
           />
 
           <StatBox
             label="Revenue تاریخی مرتبط"
-            value={formatMoney(commercialMatcher.relevantRevenue || 0)}
+            value={formatMoney(totalHistoricalRevenue || 0)}
             tone={hasRelevantData ? "green" : "default"}
           />
 
           <StatBox
             label="Gross Profit تاریخی"
             value={formatMoney(commercialMatcher.relevantGrossProfit || 0)}
-            tone={hasRelevantData ? "green" : "default"}
+            tone={commercialMatcher.relevantGrossProfit > 0 ? "green" : "yellow"}
           />
 
           <StatBox
@@ -168,6 +197,33 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
             tone={commercialMatcher.relevantAverageMargin >= 20 ? "green" : "yellow"}
           />
         </div>
+
+        {(manualPurchaseCount > 0 || manualPurchaseAmount > 0) && (
+          <>
+            <div style={divider} />
+
+            <div
+              style={{
+                background: "rgba(16,185,129,0.08)",
+                border: "1px solid rgba(16,185,129,0.18)",
+                borderRadius: 10,
+                padding: 12,
+                color: "#d1fae5",
+                lineHeight: 1.9,
+              }}
+            >
+              <strong>سوابق خرید دستی ثبت‌شده برای همین مشتری:</strong>
+
+              <div style={{ marginTop: 6 }}>
+                تعداد خریدهای دستی ثبت‌شده برای این مشتری: {manualPurchaseCount}
+              </div>
+
+              <div>
+                مجموع مبلغ خریدهای دستی: {formatMoney(manualPurchaseAmount)}
+              </div>
+            </div>
+          </>
+        )}
 
         <div style={divider} />
 
@@ -250,6 +306,32 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
                           </span>
                         </div>
 
+                        {m.matchedRequest?.Status && (
+                          <div
+                            style={{
+                              marginBottom: 8,
+                              display: "inline-block",
+                              padding: "4px 10px",
+                              borderRadius: 20,
+                              background:
+                                String(m.matchedRequest.Status)
+                                  .toUpperCase()
+                                  .includes("WIN")
+                                  ? "rgba(16,185,129,0.15)"
+                                  : "rgba(59,130,246,0.15)",
+                              color:
+                                String(m.matchedRequest.Status)
+                                  .toUpperCase()
+                                  .includes("WIN")
+                                  ? "#34d399"
+                                  : "#60a5fa",
+                              fontSize: 12,
+                            }}
+                          >
+                            وضعیت Request: {m.matchedRequest.Status}
+                          </div>
+                        )}
+
                         <div
                           style={{
                             color: "#94a3b8",
@@ -267,25 +349,67 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
                             {m.commercialInsights?.supplier || "—"}
                           </div>
 
-                          <div>
-                            <strong>Revenue:</strong>{" "}
-                            {formatMoney(m.commercialInsights?.revenue || 0)}
-                          </div>
+                          <InfoLine
+                            label="Revenue"
+                            value={formatMoney(m.commercialInsights?.revenue || 0)}
+                          />
 
-                          <div>
-                            <strong>Gross Profit:</strong>{" "}
-                            {formatMoney(m.commercialInsights?.grossProfit || 0)}
-                          </div>
+                          <InfoLine
+                            label="Cost"
+                            value={formatMoney(m.commercialInsights?.cost || 0)}
+                          />
 
-                          <div>
-                            <strong>Margin:</strong>{" "}
-                            {m.commercialInsights?.marginPercent || 0}%
-                          </div>
+                          <InfoLine
+                            label="Gross Profit"
+                            value={formatMoney(m.commercialInsights?.grossProfit || 0)}
+                          />
+
+                          <InfoLine
+                            label="Margin"
+                            value={`${m.commercialInsights?.marginPercent || 0}%`}
+                          />
+
+                          <InfoLine
+                            label="Profit Rate فایل Purchase"
+                            value={
+                              m.commercialInsights?.profitRate
+                                ? `${m.commercialInsights.profitRate}%`
+                                : ""
+                            }
+                          />
+
+                          <InfoLine
+                            label="Customer"
+                            value={
+                              m.matchedRequest?.Customer ||
+                              m.commercialInsights?.purchaseCustomer ||
+                              m.commercialInsights?.requestCustomer
+                            }
+                          />
+
+                          <InfoLine
+                            label="Status خرید"
+                            value={m.commercialInsights?.purchaseStatus}
+                          />
+
+                          <InfoLine
+                            label="Delivery Term"
+                            value={m.commercialInsights?.purchaseDeliveryTerm}
+                          />
+
+                          <InfoLine
+                            label="Shipment ID"
+                            value={m.commercialInsights?.shipmentId}
+                          />
+
+                          <InfoLine
+                            label="BL Number"
+                            value={m.commercialInsights?.blNumber}
+                          />
                         </div>
 
                         <div style={{ color: "#64748b", marginBottom: 8, direction: "ltr", textAlign: "left" }}>
-                          PI: {m.commercialInsights?.purchasePi || "—"} | Request Code:{" "}
-                          {m.commercialInsights?.requestCode || "—"}
+                          PI: {m.commercialInsights?.purchasePi || "—"} | Request Code: {m.commercialInsights?.requestCode || "—"}
                         </div>
 
                         <div
@@ -318,8 +442,8 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
 
         <div style={divider} />
 
-        <div style={{ color: "#64748b", fontSize: 12 }}>
-          آمار کلی matcher برای کنترل کیفیت: کل Matchها {commercialMatcher.matchedCount || 0} از {(commercialMatcher.matches || []).length || 0} Purchase row | High confidence: {commercialMatcher.highConfidenceCount || 0} | Medium: {commercialMatcher.mediumConfidenceCount || 0} | Low: {commercialMatcher.lowConfidenceCount || 0}
+        <div style={{ color: "#64748b", fontSize: 12, lineHeight: 1.9 }}>
+          موتور Commercial Matcher تعداد {commercialMatcher.matchedCount || 0} ارتباط بین Request و Purchase شناسایی کرده که از این تعداد، {commercialMatcher.highConfidenceCount || 0} مورد اطمینان بالا، {commercialMatcher.mediumConfidenceCount || 0} مورد اطمینان متوسط و {commercialMatcher.lowConfidenceCount || 0} مورد اطمینان پایین دارند.
         </div>
       </div>
     </div>

@@ -13,9 +13,47 @@ function normalizePi(value) {
     .trim();
 }
 
+
 function cleanNumber(value) {
   const n = Number(String(value || "").replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function getValue(row, keys = []) {
+  if (!row) return "";
+
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null) {
+      return row[key];
+    }
+  }
+
+  const normalizedMap = Object.keys(row || {}).reduce((acc, key) => {
+    acc[normalizeKey(key)] = row[key];
+    return acc;
+  }, {});
+
+  for (const key of keys) {
+    const normalized = normalizeKey(key);
+
+    if (
+      normalizedMap[normalized] !== undefined &&
+      normalizedMap[normalized] !== null
+    ) {
+      return normalizedMap[normalized];
+    }
+  }
+
+  return "";
 }
 
 function similarity(a, b) {
@@ -93,79 +131,89 @@ function buildRequestLookup(rows) {
 }
 
 function getRequestCustomer(row) {
-  return (
-    row?.Customer ||
-    row?.customer ||
-    row?.["Customer Name"] ||
-    row?.Company ||
-    row?.company ||
-    ""
-  );
+  return getValue(row, [
+    "Customer",
+    "customer",
+    "Customer Name",
+    "Company",
+    "company",
+    "Client",
+  ]);
 }
 
 function getRequestBrand(row) {
-  return (
-    row?.Brand ||
-    row?.brand ||
-    row?.Manufacturer ||
-    row?.manufacturer ||
-    ""
-  );
+  return getValue(row, [
+    "Brand",
+    "brand",
+    "Manufacturer",
+    "manufacturer",
+    "Make",
+  ]);
 }
 
 function getRequestPi(row) {
-  return (
-    row?.["PI Number"] ||
-    row?.PINumber ||
-    row?.pi ||
-    row?.PI ||
-    ""
-  );
+  return getValue(row, [
+    "PI Number",
+    "PINumber",
+    "PI",
+    "pi",
+    "Proforma",
+    "Proforma Number",
+  ]);
 }
 
 function getRequestAmount(row) {
   return (
-    cleanNumber(row?.["PI Amount"]) ||
-    cleanNumber(row?.["PI Amount AED"]) ||
-    cleanNumber(row?.Amount)
+    cleanNumber(getValue(row, ["PI Amount", "PI Amount AED", "Amount", "Total", "Total Amount"]))
   );
 }
 
 function getPurchaseCustomer(row) {
-  return (
-    row?.Customer ||
-    row?.customer ||
-    row?.["Customer Name"] ||
-    row?.Company ||
-    ""
-  );
+  return getValue(row, [
+    "Customer",
+    "customer",
+    "Customer Name",
+    "Company",
+    "Client",
+  ]);
 }
 
 function getPurchaseBrand(row) {
-  return (
-    row?.Brand ||
-    row?.brand ||
-    row?.Manufacturer ||
-    row?.manufacturer ||
-    ""
-  );
+  return getValue(row, [
+    "Brand",
+    "brand",
+    "Manufacturer",
+    "manufacturer",
+    "Make",
+  ]);
 }
 
 function getPurchasePi(row) {
-  return (
-    row?.["PI Number"] ||
-    row?.PINumber ||
-    row?.PI ||
-    row?.pi ||
-    ""
-  );
+  return getValue(row, [
+    "PI Number",
+    "PINumber",
+    "PI",
+    "pi",
+    "Proforma",
+    "Proforma Number",
+  ]);
 }
 
 function getPurchaseAmount(row) {
-  return (
-    cleanNumber(row?.["Invoice Amount AED"]) ||
-    cleanNumber(row?.["PI Amount"]) ||
-    cleanNumber(row?.Amount)
+  return cleanNumber(
+    getValue(row, [
+      "Invoice Amount AED",
+      "Invoice Amount (AED)",
+      "Invoice Amount \n (AED)",
+      "Invoice Amount\n (AED)",
+      "Received Value AED",
+      "Received Value (AED)",
+      "Received Value\n (AED) (1)",
+      "Received Value \n (AED) (1)",
+      "PI Amount",
+      "Amount",
+      "Total",
+    ])
   );
 }
 
@@ -175,28 +223,59 @@ function classifyConfidence(score) {
   return "low";
 }
 
-function extractRelevantBrandsFromRequest(requestRows = []) {
-  const brands = new Set();
+function isUsefulBrand(value) {
+  const normalized = normalizeText(value);
 
-  requestRows.forEach(r => {
-    const brand = normalizeText(getRequestBrand(r));
+  if (!normalized || normalized.length < 2) return false;
 
-    if (!brand || brand.length < 2) return;
+  const blocked = [
+    "miscellaneous",
+    "multibrand",
+    "multi brand",
+    "other",
+    "others",
+    "unknown",
+    "na",
+    "n a",
+    "motor",
+    "sensor",
+    "module",
+    "cable",
+    "relay",
+    "switch",
+    "valve",
+    "pump",
+    "drive",
+    "inverter",
+    "plc",
+  ];
 
-    brands.add(brand);
-  });
+  return !blocked.includes(normalized);
+}
 
-  return [...brands];
+function normalizeBrandList(values = []) {
+  return [
+    ...new Set(
+      values
+        .map(v => normalizeText(v))
+        .filter(isUsefulBrand)
+    ),
+  ];
 }
 
 function buildCommercialInsights(purchaseRow, requestRow) {
-  const revenue =
-    cleanNumber(purchaseRow?.["Invoice Amount AED"]) ||
-    cleanNumber(purchaseRow?.["Invoice Amount"]);
+  const revenue = getPurchaseAmount(purchaseRow);
 
-  const cost =
-    cleanNumber(purchaseRow?.["Final Purchase Cost AED"]) ||
-    cleanNumber(purchaseRow?.["Final Purchase Cost"]);
+  const cost = cleanNumber(
+    getValue(purchaseRow, [
+      "Final Purchase Cost AED",
+      "Final Purchase Cost (AED)",
+      "Final Purchase \n Cost ( AED)",
+      "Final Purchase\n Cost ( AED)",
+      "Final Purchase Cost",
+      "Cost",
+    ])
+  );
 
   const grossProfit = revenue - cost;
 
@@ -208,11 +287,11 @@ function buildCommercialInsights(purchaseRow, requestRow) {
     grossProfit,
     marginPercent: Number(margin.toFixed(2)),
 
-    supplier:
-      purchaseRow?.["Supplier Code"] ||
-      purchaseRow?.Supplier ||
-      purchaseRow?.supplier ||
-      "",
+    supplier: getValue(purchaseRow, [
+      "Supplier Code",
+      "Supplier",
+      "supplier",
+    ]),
 
     brand: getPurchaseBrand(purchaseRow) || getRequestBrand(requestRow),
 
@@ -222,11 +301,17 @@ function buildCommercialInsights(purchaseRow, requestRow) {
     purchasePi: getPurchasePi(purchaseRow),
     requestPi: getRequestPi(requestRow),
 
-    requestCode:
-      purchaseRow?.["Request Code"] ||
-      purchaseRow?.RequestCode ||
-      purchaseRow?.requestCode ||
-      "",
+    requestCode: getValue(purchaseRow, [
+      "Request Code",
+      "RequestCode",
+      "requestCode",
+    ]),
+
+    purchaseStatus: getValue(purchaseRow, ["Status", "Status "]),
+    purchaseDeliveryTerm: getValue(purchaseRow, ["Delivery Term"]),
+    shipmentId: getValue(purchaseRow, ["Shipment ID"]),
+    blNumber: getValue(purchaseRow, ["BL Number", "BL Number "]),
+    profitRate: cleanNumber(getValue(purchaseRow, ["Profit Rate"])),
   };
 }
 
@@ -234,12 +319,15 @@ export function buildCommercialMatcher({
   requestRows = [],
   purchaseRows = [],
   currentCustomer = "",
+  currentBrands = [],
+  manualPurchaseCount = 0,
+  manualPurchaseAmount = 0,
 }) {
   const requestLookup = buildRequestLookup(requestRows);
 
   const normalizedCurrentCustomer = normalizeText(currentCustomer);
 
-  const relevantBrands = extractRelevantBrandsFromRequest(requestRows);
+  const relevantBrands = normalizeBrandList(currentBrands);
 
   const matches = [];
 
@@ -247,10 +335,11 @@ export function buildCommercialMatcher({
     const candidateMap = new Map();
 
     const requestCodeCandidates = extractRequestNumbers(
-      purchaseRow?.["Request Code"] ||
-        purchaseRow?.RequestCode ||
-        purchaseRow?.requestCode ||
-        ""
+      getValue(purchaseRow, [
+        "Request Code",
+        "RequestCode",
+        "requestCode",
+      ])
     );
 
     requestCodeCandidates.forEach(code => {
@@ -367,9 +456,10 @@ export function buildCommercialMatcher({
         normalizedCurrentCustomer.includes(requestCustomer)
       );
 
-    const brandMatch = relevantBrands.includes(brand);
+    const brandMatch =
+      relevantBrands.length > 0 && relevantBrands.includes(brand);
 
-    return customerMatch || brandMatch;
+    return customerMatch && brandMatch;
   });
 
   const relevantRevenue = relevantMatches.reduce(
@@ -403,6 +493,15 @@ export function buildCommercialMatcher({
     ),
   ].slice(0, 5);
 
+  const manualCount = cleanNumber(manualPurchaseCount);
+  const manualAmount = cleanNumber(manualPurchaseAmount);
+
+  const totalRelevantPurchaseCount =
+    relevantMatches.length + manualCount;
+
+  const totalRelevantRevenueWithManual =
+    relevantRevenue + manualAmount;
+
   const totalRevenue = matched.reduce(
     (s, m) => s + (m.commercialInsights?.revenue || 0),
     0
@@ -430,11 +529,16 @@ export function buildCommercialMatcher({
       .length,
     relevantMatches,
     relevantMatchCount: relevantMatches.length,
+    manualPurchaseCount: manualCount,
+    manualPurchaseAmount: manualAmount,
+    totalRelevantPurchaseCount,
+    totalRelevantRevenueWithManual,
     relevantRevenue,
     relevantGrossProfit,
     relevantAverageMargin,
     topRelevantSuppliers,
-    topRelevantBrands,
+    topRelevantBrands: topRelevantBrands.filter(isUsefulBrand),
+    currentBrands: relevantBrands,
     totalRevenue,
     totalCost,
     totalGrossProfit,
