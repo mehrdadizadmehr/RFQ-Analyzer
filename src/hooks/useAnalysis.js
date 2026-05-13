@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { STEPS, delay } from "../constants/rfq";
 import { AI_PROVIDERS } from "../constants/providers";
@@ -16,6 +15,7 @@ import {
   enrichCustomerRequestStatsWithPurchases,
 } from "../utils/customerAnalysis";
 import { analyzeBrandProductStats } from "../utils/brandProductAnalysis";
+import { buildCommercialMatcher } from "../utils/commercialMatcher";
 import { calculateWinChance } from "../utils/winChance";
 
 function ensureSalesRecommendationFields({ mergedAi, purchaseStats, brandStats, winChance }) {
@@ -119,6 +119,27 @@ export function useAnalysis(showToast) {
       manualPurchaseAmount
     );
 
+    const allRequestRows = [
+      ...(Array.isArray(files.req25) ? files.req25 : []),
+      ...(Array.isArray(files.req26) ? files.req26 : []),
+    ];
+
+    const commercialMatcher = buildCommercialMatcher({
+      requestRows: allRequestRows,
+      purchaseRows: Array.isArray(files.purchase) ? files.purchase : [],
+    });
+
+    console.log("Commercial Matcher Summary:", {
+      matched: commercialMatcher.matchedCount,
+      unmatched: commercialMatcher.unmatchedCount,
+      high: commercialMatcher.highConfidenceCount,
+      medium: commercialMatcher.mediumConfidenceCount,
+      low: commercialMatcher.lowConfidenceCount,
+      revenue: commercialMatcher.totalRevenue,
+      grossProfit: commercialMatcher.totalGrossProfit,
+      avgMargin: commercialMatcher.averageMargin,
+    });
+
     requestStats = enrichCustomerRequestStatsWithPurchases(
       requestStats,
       purchaseStats
@@ -183,6 +204,7 @@ export function useAnalysis(showToast) {
         requestText: normalizedRequestText,
         requestStats,
         purchaseStats,
+        commercialMatcher,
         brandStats,
         companySearch,
       });
@@ -212,6 +234,7 @@ export function useAnalysis(showToast) {
       manualPurchaseAmount,
       requestStats,
       purchaseStats,
+      commercialMatcher,
       brandStats,
       winChance,
       extractedRfq: extractedRfqData,
@@ -281,6 +304,7 @@ export function useAnalysis(showToast) {
       errors,
       requestStats,
       purchaseStats,
+      commercialMatcher,
       brandStats,
       parts: mergedAi.parts || [],
       customer: extractedCustomer,

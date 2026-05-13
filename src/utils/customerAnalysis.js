@@ -15,12 +15,29 @@ export function isSameCustomer(rowValue, customer) {
   );
 }
 
-export function enrichCustomerRequestStatsWithPurchases(requestStats, purchaseStats) {
+export function enrichCustomerRequestStatsWithPurchases(
+  requestStats,
+  purchaseStats,
+  commercialMatcher
+) {
   const totalPurchaseCount = parseNumber(purchaseStats?.totalPurchaseCount);
   const totalPurchaseAmount = parseNumber(purchaseStats?.totalPurchaseAmount);
   const conversionRate = parseNumber(requestStats?.conversionRate);
 
-  const hasRealPurchase = totalPurchaseCount > 0 || totalPurchaseAmount > 0;
+  const matchedCount = parseNumber(commercialMatcher?.matchedCount);
+  const highConfidenceCount = parseNumber(
+    commercialMatcher?.highConfidenceCount
+  );
+  const matcherRevenue = parseNumber(commercialMatcher?.totalRevenue);
+  const matcherGrossProfit = parseNumber(
+    commercialMatcher?.totalGrossProfit
+  );
+  const matcherMargin = parseNumber(commercialMatcher?.averageMargin);
+
+  const hasRealPurchase =
+    totalPurchaseCount > 0 ||
+    totalPurchaseAmount > 0 ||
+    matchedCount > 0;
 
   const effectiveConversionRate = hasRealPurchase
     ? Math.max(conversionRate, 65)
@@ -28,14 +45,22 @@ export function enrichCustomerRequestStatsWithPurchases(requestStats, purchaseSt
 
   let effectiveQuality = requestStats?.quality || "نامشخص";
 
-  if (hasRealPurchase && effectiveConversionRate >= 65) {
+  if (
+    hasRealPurchase &&
+    matcherMargin >= 18 &&
+    matcherRevenue >= 50000
+  ) {
+    effectiveQuality = "مشتری تجاری ارزشمند / سودده";
+  } else if (hasRealPurchase && highConfidenceCount >= 3) {
+    effectiveQuality = "مشتری خریددار با سابقه اجرای واقعی";
+  } else if (hasRealPurchase && effectiveConversionRate >= 65) {
     effectiveQuality = "مشتری خریددار / با سابقه واقعی";
   } else if (hasRealPurchase) {
     effectiveQuality = "مشتری با خرید واقعی ثبت‌شده";
   }
 
   const effectiveBackground = hasRealPurchase
-    ? `${requestStats?.background || ""} علاوه بر سوابق درخواست، برای این مشتری خرید واقعی ثبت شده است؛ بنابراین نرخ تبدیل فرصت‌ها ممکن است صفر باشد، اما مشتری از نظر خرید واقعی فعال محسوب می‌شود.`
+    ? `${requestStats?.background || ""} علاوه بر سوابق Request، ارتباط واقعی بین Request و Purchase نیز شناسایی شده است. تعداد matchهای تجاری: ${matchedCount} مورد، matchهای high confidence: ${highConfidenceCount} مورد، مجموع فروش تخمینی: ${matcherRevenue.toLocaleString()} AED، سود ناخالص تخمینی: ${matcherGrossProfit.toLocaleString()} AED، میانگین margin: ${matcherMargin}%.`
     : requestStats?.background;
 
   return {
@@ -44,6 +69,11 @@ export function enrichCustomerRequestStatsWithPurchases(requestStats, purchaseSt
     effectiveQuality,
     effectiveBackground,
     hasRealPurchase,
+    matchedPurchaseRows: matchedCount,
+    highConfidenceMatches: highConfidenceCount,
+    estimatedRevenue: matcherRevenue,
+    estimatedGrossProfit: matcherGrossProfit,
+    estimatedAverageMargin: matcherMargin,
   };
 }
 
@@ -94,17 +124,20 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
   const matched = allRows.filter(r => isSameCustomer(r[nameCol], customer));
 
   const sold = matched.filter(r => {
-    const s = normalizeText(r[statusCol]);
+    const status = normalizeText(r[statusCol]);
+
     return (
-      s.includes("sold") ||
-      s.includes("sale") ||
-      s.includes("order") ||
-      s.includes("confirm") ||
-      s.includes("won") ||
-      s.includes("تایید") ||
-      s.includes("فروش") ||
-      s.includes("خرید") ||
-      s.includes("موفق")
+      status.includes("sold") ||
+      status.includes("sale") ||
+      status.includes("order") ||
+      status.includes("confirm") ||
+      status.includes("won") ||
+      status.includes("تایید") ||
+      status.includes("فروش") ||
+      status.includes("خرید") ||
+      status.includes("موفق") ||
+      status.includes("win") ||
+      status === "w"
     );
   });
 
@@ -131,6 +164,18 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
   });
 
   const topBrands = Object.entries(brands)
+
+  const piIssuedCount = matched.filter(r => {
+    const status = normalizeText(r[statusCol]);
+
+    return (
+      status.includes("pi") ||
+      status.includes("proforma") ||
+      status.includes("invoice")
+    );
+  }).length;
+
+  const topBrandsSorted = topBrands
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([b, count]) => `${b} (${count})`);
@@ -141,17 +186,18 @@ export function analyzeCustomerRequests(rows25, rows26, customer) {
     totalAllRequests: allRows.length,
     customerRequests: matched.length,
     soldRequests: sold.length,
+    piIssuedCount,
     requestAmount,
     conversionRate,
     effectiveConversionRate: conversionRate,
     quality,
     effectiveQuality: quality,
-    topBrands,
+    topBrands: topBrandsSorted,
     background: matched.length
-      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل‌شده در فایل Request دارد و نرخ تبدیل فرصت‌ها ${conversionRate}% است.`
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${piIssuedCount} مورد PI/Commercial activity، ${sold.length} مورد WIN/فروش ثبت‌شده و نرخ تبدیل اولیه ${conversionRate}% در فایل Request دارد.`
       : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
     effectiveBackground: matched.length
-      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${sold.length} مورد فروش/تبدیل‌شده در فایل Request دارد و نرخ تبدیل فرصت‌ها ${conversionRate}% است.`
+      ? `این مشتری ${matched.length} فرصت/درخواست ثبت‌شده دارد، ${piIssuedCount} مورد PI/Commercial activity، ${sold.length} مورد WIN/فروش ثبت‌شده و نرخ تبدیل اولیه ${conversionRate}% در فایل Request دارد.`
       : "برای این مشتری در فایل‌های درخواست، سابقه‌ای پیدا نشد.",
   };
 }

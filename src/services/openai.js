@@ -85,6 +85,7 @@ export async function buildBaseRfqAnalysisWithOpenAI({
   requestText,
   requestStats,
   purchaseStats,
+  commercialMatcher,
   brandStats,
   companySearch,
 }) {
@@ -99,6 +100,13 @@ Language rules:
 - All narrative text MUST be Persian.
 - Technical terms, brands, models and part numbers can remain English.
 - Never leave important fields empty.
+
+Commercial intelligence rules:
+- commercialMatcher contains reconstructed real purchase execution data.
+- Treat matched purchases as stronger evidence than WIN status alone.
+- Use margin, revenue and supplier evidence when generating summary and pricing logic.
+- If strong commercial evidence exists, mention that this customer or brand has real execution history.
+- If confidence is low, mention uncertainty cautiously.
 
 Customer:
 ${customer || "Unknown"}
@@ -115,6 +123,33 @@ ${JSON.stringify(requestStats || {}, null, 2)}
 Purchase statistics:
 ${JSON.stringify(purchaseStats || {}, null, 2)}
 
+Commercial matcher intelligence:
+${JSON.stringify(
+  {
+    matchedCount: commercialMatcher?.matchedCount,
+    unmatchedCount: commercialMatcher?.unmatchedCount,
+    highConfidenceCount: commercialMatcher?.highConfidenceCount,
+    mediumConfidenceCount: commercialMatcher?.mediumConfidenceCount,
+    lowConfidenceCount: commercialMatcher?.lowConfidenceCount,
+    totalRevenue: commercialMatcher?.totalRevenue,
+    totalCost: commercialMatcher?.totalCost,
+    totalGrossProfit: commercialMatcher?.totalGrossProfit,
+    averageMargin: commercialMatcher?.averageMargin,
+    sampleMatches: (commercialMatcher?.matches || []).slice(0, 5).map(m => ({
+      confidence: m.confidence,
+      score: m.score,
+      reasons: m.matchReasons,
+      revenue: m.commercialInsights?.revenue,
+      grossProfit: m.commercialInsights?.grossProfit,
+      marginPercent: m.commercialInsights?.marginPercent,
+      supplier: m.commercialInsights?.supplier,
+      brand: m.commercialInsights?.brand,
+    })),
+  },
+  null,
+  2
+)}
+
 Brand analysis:
 ${JSON.stringify(brandStats || {}, null, 2)}
 
@@ -129,6 +164,12 @@ Return ONLY this JSON schema:
   "estimatedTotalChina": "",
   "estimatedTotalUAE": "",
   "pricingNotes": "",
+  "commercialSummary": {
+    "realPurchaseEvidence": "",
+    "marginObservation": "",
+    "supplierObservation": "",
+    "customerQuality": ""
+  },
   "parts": [
     {
       "partNumber": "",
