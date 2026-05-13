@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { STEPS, delay } from "../constants/rfq";
 import { AI_PROVIDERS } from "../constants/providers";
@@ -16,6 +17,46 @@ import {
 } from "../utils/customerAnalysis";
 import { analyzeBrandProductStats } from "../utils/brandProductAnalysis";
 import { calculateWinChance } from "../utils/winChance";
+
+function ensureSalesRecommendationFields({ mergedAi, purchaseStats, brandStats, winChance }) {
+  const hasRealPurchase =
+    Number(purchaseStats?.totalPurchaseCount || 0) > 0 ||
+    Number(purchaseStats?.totalPurchaseAmount || 0) > 0;
+
+  const hasBrandHistory = Array.isArray(brandStats?.brandDemandStats)
+    ? brandStats.brandDemandStats.length > 0
+    : false;
+
+  const fallbackRecommendation = hasRealPurchase
+    ? "با توجه به سابقه خرید واقعی مشتری، این RFQ باید سریع وارد فاز قیمت‌گیری شود. پیشنهاد را با تفکیک China sourcing و UAE market آماده کنید، روی اصالت کالا، lead time دقیق و شرایط پرداخت شفاف تاکید کنید."
+    : "قبل از صرف زمان زیاد، جدیت مشتری و اعتبار RFQ را با یک تماس یا ایمیل کوتاه تایید کنید. سپس قیمت اولیه، زمان تحویل و شرایط پرداخت را شفاف ارائه دهید.";
+
+  const fallbackRisks = [
+    !hasRealPurchase
+      ? "سابقه خرید واقعی کافی برای این مشتری ثبت نشده است."
+      : null,
+    Number(winChance?.score || 0) < 45
+      ? "شانس برد پایین یا متوسط است و باید قبل از قیمت‌گیری سنگین، جدیت مشتری تایید شود."
+      : null,
+    !hasBrandHistory
+      ? "برای برندهای این RFQ سابقه قابل اتکای کافی در فایل‌ها پیدا نشد."
+      : null,
+    "ریسک قیمت‌گذاری، اصالت کالا، availability و lead time باید قبل از ارسال پیشنهاد نهایی کنترل شود.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const fallbackNextStep =
+    "قدم بعدی: 1) تایید دقیق Part Number و Qty با مشتری، 2) استعلام همزمان از China و UAE، 3) محاسبه margin، 4) اعلام بازه قیمت و lead time، 5) درخواست target price یا budget در صورت نیاز.";
+
+  return {
+    ...mergedAi,
+    recommendation:
+      String(mergedAi?.recommendation || "").trim() || fallbackRecommendation,
+    risks: String(mergedAi?.risks || "").trim() || fallbackRisks,
+    nextStep: String(mergedAi?.nextStep || "").trim() || fallbackNextStep,
+  };
+}
 
 export function useAnalysis(showToast) {
   const [phase, setPhase] = useState("idle");
@@ -92,7 +133,8 @@ export function useAnalysis(showToast) {
       files.req25,
       files.req26,
       files.purchase,
-      normalizedRequestText
+      normalizedRequestText,
+      extractedCustomer
     );
 
     let companySearch = null;
@@ -205,7 +247,7 @@ export function useAnalysis(showToast) {
     await delay(300);
     setStepState("s5", "done");
 
-    const mergedAi = {
+    const mergedAiRaw = {
       ...(baseAi || {}),
       ...(aiResults.claude || {}),
       summary: aiResults.claude?.summary || baseAi?.summary || "—",
@@ -224,6 +266,13 @@ export function useAnalysis(showToast) {
           ? aiResults.claude.parts
           : baseAi?.parts || [],
     };
+
+    const mergedAi = ensureSalesRecommendationFields({
+      mergedAi: mergedAiRaw,
+      purchaseStats,
+      brandStats,
+      winChance,
+    });
 
     setResult({
       ai: mergedAi,

@@ -154,7 +154,13 @@ function extractTextMatches(rows, col, requestText) {
   });
 }
 
-export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestText) {
+export function analyzeBrandProductStats(
+  rows25,
+  rows26,
+  purchaseRows,
+  requestText,
+  customerName = ""
+) {
   const requestRows = [...(rows25 || []), ...(rows26 || [])];
   const purchaseOnlyRows = [...(purchaseRows || [])];
   const allRows = [...requestRows, ...purchaseOnlyRows];
@@ -217,6 +223,116 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
     "نتیجه",
   ]);
 
+  const normalizedRequestText = normalizeText(requestText || "");
+  const normalizedCustomerName = normalizeText(customerName || "");
+
+  const customerCol = findColumn(allRows, [
+    "customer",
+    "customer name",
+    "client",
+    "company",
+    "account",
+    "مشتری",
+    "نام مشتری",
+    "شرکت",
+  ]);
+
+  const extractMentionedBrands = () => {
+    if (!brandCol) return [];
+
+    const map = {};
+
+    allRows.forEach(r => {
+      const rawBrand = String(r?.[brandCol] || "").trim();
+
+      if (!isValidProductValue(rawBrand)) return;
+
+      const normalizedBrand = normalizeText(rawBrand);
+
+      if (!normalizedBrand) return;
+
+      if (!normalizedRequestText.includes(normalizedBrand)) return;
+
+      const key = rawBrand.toUpperCase();
+
+      map[key] = (map[key] || 0) + 1;
+    });
+
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .map(([brand, count]) => ({
+        brand,
+        count,
+      }));
+  };
+
+  const mentionedBrands = extractMentionedBrands();
+
+  const buildBrandDemandStats = () => {
+    if (!brandCol || !mentionedBrands.length) return [];
+
+    return mentionedBrands.map(item => {
+      const brandNormalized = normalizeText(item.brand);
+
+      const currentCustomerRows = allRows.filter(r => {
+        const brandValue = normalizeText(r?.[brandCol]);
+        const customerValue = normalizeText(r?.[customerCol]);
+
+        return (
+          brandValue === brandNormalized &&
+          normalizedCustomerName &&
+          customerValue.includes(normalizedCustomerName)
+        );
+      });
+
+      const otherCustomerRows = allRows.filter(r => {
+        const brandValue = normalizeText(r?.[brandCol]);
+        const customerValue = normalizeText(r?.[customerCol]);
+
+        return (
+          brandValue === brandNormalized &&
+          (!normalizedCustomerName ||
+            !customerValue.includes(normalizedCustomerName))
+        );
+      });
+
+      const currentCustomerSuccessfulRows = currentCustomerRows.filter(r =>
+        isSoldRow(r, statusCol)
+      );
+
+      const otherCustomerSuccessfulRows = otherCustomerRows.filter(r =>
+        isSoldRow(r, statusCol)
+      );
+
+      const purchaseMatches = purchaseOnlyRows.filter(r => {
+        const brandValue = normalizeText(r?.[brandCol]);
+        return brandValue === brandNormalized;
+      });
+
+      return {
+        brand: item.brand,
+
+        currentCustomerRequestCount: currentCustomerRows.length,
+        currentCustomerSuccessfulCount:
+          currentCustomerSuccessfulRows.length,
+
+        otherCustomersRequestCount: otherCustomerRows.length,
+        otherCustomersSuccessfulCount:
+          otherCustomerSuccessfulRows.length,
+
+        totalRequestCount:
+          currentCustomerRows.length + otherCustomerRows.length,
+
+        totalSuccessfulCount:
+          currentCustomerSuccessfulRows.length +
+          otherCustomerSuccessfulRows.length +
+          purchaseMatches.length,
+      };
+    });
+  };
+
+  const brandDemandStats = buildBrandDemandStats();
+
   const topBrandsAll = getTopCounts(allRows, brandCol, 7);
   const topPartsAll = getTopCounts(allRows, partCol, 7);
   const topCategoriesAll = getTopCounts(allRows, categoryCol, 7);
@@ -267,10 +383,13 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
     ...mentionedCategorySoldRows,
   ].reduce((s, r) => s + parseNumber(r[amountCol]), 0);
 
-  const topBrandNames = topBrandsAll
+  const topBrandNames = brandDemandStats
     .slice(0, 5)
-    .map(x => `${x.name} (${x.count})`)
-    .join(", ");
+    .map(
+      x =>
+        `${x.brand} (این مشتری: ${x.currentCustomerRequestCount} | سایر مشتریان: ${x.otherCustomersRequestCount})`
+    )
+    .join("، ");
 
   const topPartNames = topPartsAll
     .slice(0, 5)
@@ -284,11 +403,17 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
 
   return {
     topBrandsAll,
+    brandDemandStats,
     topPartsAll,
     topCategoriesAll,
 
-    mentionedBrandCount: mentionedBrandRows.length,
+    mentionedBrandCount: brandDemandStats.reduce(
+      (s, x) => s + x.totalRequestCount,
+      0
+    ),
+
     mentionedProductCount: mentionedPartRows.length,
+
     mentionedCategoryCount: mentionedCategoryRows.length,
 
     mentionedBrandAmount: mentionedBrandRows.reduce((s, r) => s + parseNumber(r[amountCol]), 0),
@@ -308,10 +433,10 @@ export function analyzeBrandProductStats(rows25, rows26, purchaseRows, requestTe
     },
 
     summary:
-      similarSuccessfulPurchasesCount > 0
-        ? `Similar products and brands already exist in historical RFQs and purchases. Successful related records detected: ${similarSuccessfulPurchasesCount}. Top brands: ${topBrandNames || "N/A"}. Top products: ${topPartNames || "N/A"}. Top categories: ${topCategoryNames || "N/A"}.`
-        : mentionedBrandRows.length || mentionedPartRows.length || mentionedCategoryRows.length
-          ? `Similar brands/products were detected in uploaded history, but no confirmed successful purchase record was found. Top brands: ${topBrandNames || "N/A"}. Top products: ${topPartNames || "N/A"}.`
-          : "No meaningful historical similarity was detected in uploaded RFQ and purchase files.",
+      brandDemandStats.length > 0
+        ? `برندهای موجود در RFQ فعلی قبلاً در تاریخچه سیستم دیده شده‌اند. ${topBrandNames || ""}`
+        : similarSuccessfulPurchasesCount > 0
+          ? `سوابق خرید و RFQ مشابه در فایل‌های قبلی پیدا شد.`
+          : "هیچ سابقه معناداری از برندها یا محصولات این RFQ در فایل‌های قبلی پیدا نشد.",
   };
 }
