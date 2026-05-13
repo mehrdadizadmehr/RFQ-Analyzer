@@ -16,6 +16,7 @@ import {
 } from "../utils/customerAnalysis";
 import { analyzeBrandProductStats } from "../utils/brandProductAnalysis";
 import { buildCommercialMatcher } from "../utils/commercialMatcher";
+import { buildSupplierIntelligence } from "../utils/supplierIntelligence";
 import { calculateWinChance } from "../utils/winChance";
 
 function ensureSalesRecommendationFields({ mergedAi, purchaseStats, brandStats, winChance }) {
@@ -143,6 +144,24 @@ export function useAnalysis(showToast) {
       manualPurchaseAmount,
     });
 
+    const supplierIntelligence = buildSupplierIntelligence({
+      supplierRows: Array.isArray(files.suppliers)
+        ? files.suppliers
+        : [],
+      winnerRows: Array.isArray(files.supplierWinners)
+        ? files.supplierWinners
+        : [],
+      currentBrands,
+    });
+
+    console.log("Supplier Intelligence:", {
+      targetBrands: supplierIntelligence.targetBrands,
+      totalSuppliers: supplierIntelligence.totalSuppliers,
+      totalWinnerRows: supplierIntelligence.totalWinnerRows,
+      rankedSuppliers: supplierIntelligence.rankedSuppliers.length,
+      topSuppliers: supplierIntelligence.topSuppliers.slice(0, 5),
+    });
+
     console.log("Commercial Matcher Summary:", {
       matched: commercialMatcher.matchedCount,
       unmatched: commercialMatcher.unmatchedCount,
@@ -234,6 +253,7 @@ export function useAnalysis(showToast) {
         requestStats,
         purchaseStats,
         commercialMatcher,
+        supplierIntelligence,
         brandStats,
         companySearch,
       });
@@ -264,6 +284,7 @@ export function useAnalysis(showToast) {
       requestStats,
       purchaseStats,
       commercialMatcher,
+      supplierIntelligence,
       brandStats,
       winChance,
       extractedRfq: extractedRfqData,
@@ -334,6 +355,7 @@ export function useAnalysis(showToast) {
       requestStats,
       purchaseStats,
       commercialMatcher,
+      supplierIntelligence,
       brandStats,
       parts: mergedAi.parts || [],
       customer: extractedCustomer,

@@ -9,6 +9,7 @@ export function buildRfqPrompt({
   requestStats,
   purchaseStats,
   commercialMatcher,
+  supplierIntelligence,
   brandStats,
   winChance,
   extractedRfq,
@@ -86,6 +87,18 @@ Commercial matcher rules:
 - Use matched_average_margin and matched_gross_profit to improve customer quality, brand attractiveness, and sales recommendation.
 - Do not invent matched deals that are not present in commercialMatcher.
 
+Supplier intelligence rules:
+- supplierIntelligence is the PRIMARY source for supplier recommendations.
+- Do NOT hallucinate supplier names.
+- Prefer suppliers that historically supplied the same RFQ brand successfully.
+- Prioritize suppliers with higher successfulPurchaseCount and successfulPurchaseAmount.
+- If supplierIntelligence.topSuppliers exists, use those suppliers first.
+- Supplier suggestions must be grounded in historical supplier evidence.
+- If historical supplier evidence is weak, clearly mention uncertainty.
+- Prefer suppliers with exact RFQ brand match over generic industrial suppliers.
+- If supplier country or sourcing region exists, use it.
+- Never invent websites, countries, or supplier history.
+
 Customer:
 name=${customer || "unknown"}
 rfq=${rfqNum || "unknown"}
@@ -139,6 +152,27 @@ matcher_sample=${JSON.stringify((commercialMatcher?.matches || []).slice(0, 8).m
   brand: m.commercialInsights?.brand,
 })), null, 2)}
 
+Supplier intelligence:
+rfq_target_brands=${JSON.stringify(supplierIntelligence?.targetBrands || [])}
+total_suppliers=${supplierIntelligence?.totalSuppliers || 0}
+total_supplier_winner_rows=${supplierIntelligence?.totalWinnerRows || 0}
+
+historical_top_suppliers=${JSON.stringify(
+  (supplierIntelligence?.topSuppliers || []).slice(0, 10).map(s => ({
+    supplierName: s.companyName,
+    supplierCode: s.code,
+    matchedBrands: s.brands,
+    successfulPurchaseCount: s.successfulPurchaseCount,
+    successfulPurchaseAmount: s.successfulPurchaseAmount,
+    country: s.country,
+    website: s.website,
+    score: s.score,
+    priority: s.priority,
+  })),
+  null,
+  2
+)}
+
 Brand/Product stats from uploaded files:
 top_brands_all=${(brandStats.topBrandsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 top_products_all=${(brandStats.topPartsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
@@ -180,6 +214,9 @@ Important pricing and sourcing output requirement:
 - Each part must include estimatedLineTotalChina and estimatedLineTotalUAE.
 - If recognizable suppliers, sourcing channels or market patterns exist, mention possible sourcing direction briefly.
 - Supplier suggestions must stay realistic and concise.
+- Supplier suggestions should primarily come from supplierIntelligence historical ranking.
+- Prefer historical suppliers with exact brand match.
+- Mention supplier purchase success evidence briefly when possible.
 
 Original RFQ/email text for context only:
 """
@@ -265,7 +302,12 @@ JSON schema:
   "supplierSuggestions": [
     {
       "supplierName": "",
+      "supplierCode": "",
+      "historicalScore": 0,
+      "successfulPurchaseCount": 0,
+      "successfulPurchaseAmount": 0,
       "region": "China|UAE|Global",
+      "website": "",
       "reason": ""
     }
   ],

@@ -11,6 +11,7 @@ import BackgroundCheckCard from "./BackgroundCheckCard";
 import PartsTable from "./PartsTable";
 import SalesRecommendationCard from "./SalesRecommendationCard";
 import CommercialMatcherCard from "./CommercialMatcherCard";
+import SupplierIntelligenceCard from "./SupplierIntelligenceCard";
 
 const sections = [
   {
@@ -39,6 +40,11 @@ const sections = [
     icon: "🔗",
   },
   {
+    id: "supplier-intelligence",
+    label: "تامین‌کننده‌ها",
+    icon: "🏭",
+  },
+  {
     id: "background",
     label: "بک‌گراند",
     icon: "🔎",
@@ -64,6 +70,7 @@ export default function ResultsSection({ result }) {
     winChance,
     errors,
     commercialMatcher,
+    supplierIntelligence,
   } = result;
   const parts = ai.parts || [];
 
@@ -200,6 +207,12 @@ export default function ResultsSection({ result }) {
 
         <div id="commercial-matcher">
           <CommercialMatcherCard commercialMatcher={commercialMatcher} />
+        </div>
+
+        <div id="supplier-intelligence">
+          <SupplierIntelligenceCard
+            supplierIntelligence={supplierIntelligence}
+          />
         </div>
 
         <div id="background">
