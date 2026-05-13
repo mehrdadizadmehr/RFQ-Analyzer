@@ -1,4 +1,3 @@
-
 import { card, secTitle, bar, textBox, divider } from "../../styles/theme";
 import { formatMoney } from "../../utils/numbers";
 
@@ -94,8 +93,25 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
   const relevantMatches = commercialMatcher.relevantMatches || [];
 
   const topRelevantMatches = relevantMatches
-    .filter(m => m.matchedRequest)
-    .sort((a, b) => b.score - a.score)
+    .filter(m => {
+      if (!m.matchedRequest) return false;
+
+      const brand = String(
+        m?.commercialInsights?.brand || ""
+      ).toLowerCase();
+
+      return (
+        brand &&
+        brand !== "miscellaneous" &&
+        brand !== "multibrand"
+      );
+    })
+    .sort((a, b) => {
+      const aRevenue = a?.commercialInsights?.revenue || 0;
+      const bRevenue = b?.commercialInsights?.revenue || 0;
+
+      return bRevenue - aRevenue || b.score - a.score;
+    })
     .slice(0, 5);
 
   const hasRelevantData = relevantMatches.length > 0;
@@ -116,7 +132,7 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
         }}
       >
         <div>
-          این بخش فقط خریدها و فروش‌هایی را نشان می‌دهد که به مشتری فعلی یا برندهای مرتبط با RFQ فعلی نزدیک هستند. آمار کلی فایل‌ها اینجا ملاک تصمیم نیست؛ ملاک، ارتباط واقعی با همین درخواست است.
+          این بخش فقط سوابق تجاری مرتبط با همین RFQ را نشان می‌دهد؛ یعنی خریدها، PIها، Supplierها و تعاملاتی که از نظر برند، مشتری یا Request Code به درخواست فعلی نزدیک هستند. هدف این بخش پیدا کردن سابقه واقعی تجاری برای همین نوع RFQ است، نه نمایش همه فعالیت‌های تاریخی مشتری.
         </div>
 
         <div style={divider} />
@@ -129,25 +145,25 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
           }}
         >
           <StatBox
-            label="Match مرتبط با این RFQ"
+            label="سوابق تجاری مرتبط"
             value={commercialMatcher.relevantMatchCount || 0}
             tone={hasRelevantData ? "green" : "yellow"}
           />
 
           <StatBox
-            label="Revenue مرتبط"
+            label="Revenue تاریخی مرتبط"
             value={formatMoney(commercialMatcher.relevantRevenue || 0)}
             tone={hasRelevantData ? "green" : "default"}
           />
 
           <StatBox
-            label="Gross Profit مرتبط"
+            label="Gross Profit تاریخی"
             value={formatMoney(commercialMatcher.relevantGrossProfit || 0)}
             tone={hasRelevantData ? "green" : "default"}
           />
 
           <StatBox
-            label="Margin مرتبط"
+            label="میانگین Margin تاریخی"
             value={`${commercialMatcher.relevantAverageMargin || 0}%`}
             tone={commercialMatcher.relevantAverageMargin >= 20 ? "green" : "yellow"}
           />
@@ -165,12 +181,12 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
               }}
             >
               <MiniList
-                title="Supplierهای مرتبط قبلی:"
+                title="Supplierهای موفق قبلی برای برندهای مشابه:"
                 items={commercialMatcher.topRelevantSuppliers}
               />
 
               <MiniList
-                title="برندهای مرتبط قبلی:"
+                title="برندهای دارای سابقه خرید واقعی:"
                 items={commercialMatcher.topRelevantBrands}
               />
             </div>
@@ -180,7 +196,7 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
                 <div style={divider} />
 
                 <div>
-                  <strong>نمونه سوابق مرتبط:</strong>
+                  <strong>نمونه خریدهای واقعی مشابه:</strong>
 
                   <div style={{ marginTop: 10 }}>
                     {topRelevantMatches.map((m, i) => (
@@ -204,7 +220,7 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
                           }}
                         >
                           <strong style={{ color: "#e2e8f0" }}>
-                            Purchase Row #{m.purchaseIndex + 1}
+                            سابقه خرید مشابه #{i + 1}
                           </strong>
 
                           <span
@@ -226,21 +242,60 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
                                     : "#f87171",
                             }}
                           >
-                            {m.confidence} | score {m.score}
+                            {m.confidence === "high"
+                              ? "اطمینان بالا"
+                              : m.confidence === "medium"
+                                ? "اطمینان متوسط"
+                                : "اطمینان پایین"}
                           </span>
                         </div>
 
-                        <div style={{ color: "#94a3b8", marginBottom: 8 }}>
-                          Brand: {m.commercialInsights?.brand || "—"} | Supplier:{" "}
-                          {m.commercialInsights?.supplier || "—"} | Revenue:{" "}
-                          {formatMoney(m.commercialInsights?.revenue || 0)} | Profit:{" "}
-                          {formatMoney(m.commercialInsights?.grossProfit || 0)} | Margin:{" "}
-                          {m.commercialInsights?.marginPercent || 0}%
+                        <div
+                          style={{
+                            color: "#94a3b8",
+                            marginBottom: 8,
+                            lineHeight: 1.9,
+                          }}
+                        >
+                          <div>
+                            <strong>برند:</strong>{" "}
+                            {m.commercialInsights?.brand || "—"}
+                          </div>
+
+                          <div>
+                            <strong>Supplier:</strong>{" "}
+                            {m.commercialInsights?.supplier || "—"}
+                          </div>
+
+                          <div>
+                            <strong>Revenue:</strong>{" "}
+                            {formatMoney(m.commercialInsights?.revenue || 0)}
+                          </div>
+
+                          <div>
+                            <strong>Gross Profit:</strong>{" "}
+                            {formatMoney(m.commercialInsights?.grossProfit || 0)}
+                          </div>
+
+                          <div>
+                            <strong>Margin:</strong>{" "}
+                            {m.commercialInsights?.marginPercent || 0}%
+                          </div>
                         </div>
 
                         <div style={{ color: "#64748b", marginBottom: 8, direction: "ltr", textAlign: "left" }}>
                           PI: {m.commercialInsights?.purchasePi || "—"} | Request Code:{" "}
                           {m.commercialInsights?.requestCode || "—"}
+                        </div>
+
+                        <div
+                          style={{
+                            marginBottom: 6,
+                            color: "#cbd5e1",
+                            fontSize: 12,
+                          }}
+                        >
+                          دلایل ارتباط این سابقه با RFQ فعلی:
                         </div>
 
                         <div>
@@ -257,7 +312,7 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
           </>
         ) : (
           <div style={{ color: "#fbbf24" }}>
-            برای مشتری یا برندهای این RFQ، سابقه خرید مرتبط قابل اتکایی در فایل Purchase پیدا نشد. این به معنی نبودن درخواست‌های قبلی نیست؛ یعنی خرید واقعی مرتبط از روی matcher شناسایی نشده است.
+            برای برندها یا مشخصات اصلی این RFQ، سابقه خرید واقعی و قابل اتکایی پیدا نشد. ممکن است مشتری قبلاً RFQ ثبت کرده باشد اما Purchase مستند یا ارتباط قوی Request ↔ Purchase برای این نوع کالا شناسایی نشده باشد.
           </div>
         )}
 
