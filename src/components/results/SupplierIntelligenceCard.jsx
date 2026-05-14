@@ -65,7 +65,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ ...secTitle, marginBottom: 12 }}>
         <div style={bar} />
-        🏭 Supplier Intelligence
+        🏭 Supplier & Brand Alias Intelligence
       </div>
 
       <div
@@ -229,6 +229,11 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                   <InfoLine label="Score" value={supplier.score} />
 
                   <InfoLine
+                    label="Brand Match Score"
+                    value={supplier.brandMatchScore}
+                  />
+
+                  <InfoLine
                     label="Brand Match Strength"
                     value={supplier.exactBrandPurchaseStrength}
                   />
@@ -283,6 +288,58 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                         {String(brand).toUpperCase()}
                       </span>
                     ))}
+                  </div>
+                </>
+              )}
+
+              {supplier.matchedBrandAliases?.length > 0 && (
+                <>
+                  <div style={divider} />
+
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      color: "#34d399",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Alias Match Intelligence:
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 6,
+                    }}
+                  >
+                    {supplier.matchedBrandAliases.map(alias => (
+                      <span
+                        key={alias}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 20,
+                          background: "rgba(16,185,129,0.15)",
+                          color: "#34d399",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          border: "1px solid rgba(16,185,129,0.25)",
+                        }}
+                      >
+                        {String(alias).toUpperCase()}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      color: "#94a3b8",
+                      fontSize: 12,
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    این تامین‌کننده بر اساس تطبیق هوشمند برند، alias detection و overlap بین برند RFQ و سوابق تاریخی تامین‌کننده شناسایی شده است.
                   </div>
                 </>
               )}

@@ -93,6 +93,60 @@ function looksLikeIndustrialPartNumber(value) {
   return false;
 }
 
+function extractBrandTokens(value) {
+  const normalized = normalizeText(value)
+    .replace(/[()]/g, " ")
+    .replace(/&/g, " and ");
+
+  return normalized
+    .split(/[,/|؛;\-\s]+/)
+    .map(x => x.trim())
+    .filter(x => x && x.length > 1);
+}
+
+function buildBrandAliasSet(brands = []) {
+  const set = new Set();
+
+  brands.forEach(brand => {
+    const normalized = normalizeText(brand);
+
+    if (normalized) {
+      set.add(normalized);
+    }
+
+    extractBrandTokens(brand).forEach(token => {
+      set.add(token);
+    });
+  });
+
+  return Array.from(set);
+}
+
+function calculateBrandOverlap(a = "", b = "") {
+  const aliasesA = buildBrandAliasSet([a]);
+  const aliasesB = buildBrandAliasSet([b]);
+
+  const matched = [];
+
+  aliasesA.forEach(x => {
+    aliasesB.forEach(y => {
+      if (x === y) {
+        matched.push(x);
+        return;
+      }
+
+      if (x.includes(y) || y.includes(x)) {
+        matched.push(`${x}~${y}`);
+      }
+    });
+  });
+
+  return {
+    matched: matched.length > 0,
+    aliases: Array.from(new Set(matched)),
+  };
+}
+
 function isValidProductValue(value) {
   const v = String(value || "").trim();
 
@@ -286,7 +340,12 @@ export function analyzeBrandProductStats(
 
       if (!normalizedBrand) return;
 
-      if (!normalizedRequestText.includes(normalizedBrand)) return;
+      const requestBrandMatch = calculateBrandOverlap(
+        requestText,
+        rawBrand
+      );
+
+      if (!requestBrandMatch.matched) return;
 
       const key = rawBrand.toUpperCase();
 
@@ -311,13 +370,15 @@ export function analyzeBrandProductStats(
 
     return mentionedBrands.map(item => {
       const brandNormalized = normalizeText(item.brand);
+      const brandAliases = buildBrandAliasSet([item.brand]);
 
       const currentCustomerRows = allRows.filter(r => {
         const brandValue = normalizeText(r?.[brandCol]);
         const customerValue = normalizeText(r?.[customerCol]);
 
         return (
-          brandValue === brandNormalized &&
+          calculateBrandOverlap(brandValue, brandNormalized)
+            .matched &&
           normalizedCustomerName &&
           customerValue.includes(normalizedCustomerName)
         );
@@ -328,7 +389,8 @@ export function analyzeBrandProductStats(
         const customerValue = normalizeText(r?.[customerCol]);
 
         return (
-          brandValue === brandNormalized &&
+          calculateBrandOverlap(brandValue, brandNormalized)
+            .matched &&
           (!normalizedCustomerName ||
             !customerValue.includes(normalizedCustomerName))
         );
@@ -339,7 +401,10 @@ export function analyzeBrandProductStats(
           m?.commercialInsights?.brand
         );
 
-        return matchBrand === brandNormalized;
+        return calculateBrandOverlap(
+          matchBrand,
+          brandNormalized
+        ).matched;
       });
 
       const currentCustomerPurchaseMatches =
@@ -373,6 +438,7 @@ export function analyzeBrandProductStats(
 
       return {
         brand: item.brand,
+        brandAliases,
 
         currentCustomerRequestCount: currentCustomerRows.length,
         currentCustomerSuccessfulCount:

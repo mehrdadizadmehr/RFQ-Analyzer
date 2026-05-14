@@ -162,29 +162,48 @@ export function useAnalysis(showToast) {
       topSuppliers: supplierIntelligence.topSuppliers.slice(0, 5),
     });
 
-    console.log("Commercial Matcher Summary:", {
-      matched: commercialMatcher.matchedCount,
-      unmatched: commercialMatcher.unmatchedCount,
-      high: commercialMatcher.highConfidenceCount,
-      medium: commercialMatcher.mediumConfidenceCount,
-      low: commercialMatcher.lowConfidenceCount,
-      revenue: commercialMatcher.totalRevenue,
-      grossProfit: commercialMatcher.totalGrossProfit,
-      avgMargin: commercialMatcher.averageMargin,
-      relevantMatches: commercialMatcher.relevantMatchCount,
-      relevantRevenue: commercialMatcher.relevantRevenue,
-      relevantGrossProfit: commercialMatcher.relevantGrossProfit,
-      relevantAverageMargin: commercialMatcher.relevantAverageMargin,
-      relevantSuppliers: commercialMatcher.topRelevantSuppliers,
-      relevantBrands: commercialMatcher.topRelevantBrands,
-      currentBrands: commercialMatcher.currentBrands,
-      manualPurchaseCount: commercialMatcher.manualPurchaseCount,
-      manualPurchaseAmount: commercialMatcher.manualPurchaseAmount,
-      totalRelevantPurchaseCount:
-        commercialMatcher.totalRelevantPurchaseCount,
-      totalRelevantRevenueWithManual:
-        commercialMatcher.totalRelevantRevenueWithManual,
+    console.log("Supplier Intelligence Deep Debug:", {
+      rfqBrands: currentBrands,
+      rfqBrandAliases: supplierIntelligence.targetBrandAliases,
+      supplierRowsLoaded: Array.isArray(files.suppliers)
+        ? files.suppliers.length
+        : 0,
+      winnerRowsLoaded: Array.isArray(files.supplierWinners)
+        ? files.supplierWinners.length
+        : 0,
+      rawSupplierSample: Array.isArray(files.suppliers)
+        ? files.suppliers.slice(0, 3)
+        : [],
+      rankedSupplierSample: supplierIntelligence.rankedSuppliers
+        .slice(0, 10)
+        .map(s => ({
+          supplier: s.companyName,
+          code: s.code,
+          brands: s.brands,
+          matchedAliases: s.matchedBrandAliases,
+          brandMatched: s.brandMatched,
+          brandMatchScore: s.brandMatchScore,
+          successfulPurchaseCount:
+            s.successfulPurchaseCount,
+          successfulPurchaseAmount:
+            s.successfulPurchaseAmount,
+          score: s.score,
+        })),
     });
+
+    if (
+      supplierIntelligence.topSuppliers.length === 0 &&
+      currentBrands.length > 0
+    ) {
+      console.warn("Supplier Intelligence found NO supplier matches", {
+        currentBrands,
+        targetBrandAliases:
+          supplierIntelligence.targetBrandAliases,
+        supplierRowsLoaded: Array.isArray(files.suppliers)
+          ? files.suppliers.length
+          : 0,
+      });
+    }
 
     requestStats = enrichCustomerRequestStatsWithPurchases(
       requestStats,

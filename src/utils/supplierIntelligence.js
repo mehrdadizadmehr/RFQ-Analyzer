@@ -1,6 +1,8 @@
 function normalizeText(value) {
   return String(value || "")
     .toLowerCase()
+    .replace(/[®™©]/g, "")
+    .replace(/[()]/g, " ")
     .replace(/[_\-\/\\]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -47,6 +49,124 @@ function splitBrands(value) {
     .filter(Boolean);
 }
 
+function extractPotentialBrandsFromRow(row) {
+  if (!row || typeof row !== "object") return [];
+
+  const collected = [];
+
+  Object.entries(row).forEach(([key, value]) => {
+    const normalizedKey = normalizeText(key);
+
+    const looksLikeBrandColumn = [
+      "brand",
+      "brands",
+      "manufacturer",
+      "manufacturers",
+      "maker",
+      "vendors",
+      "supported brands",
+      "main brand",
+      "product brand",
+      "oem",
+      "line card",
+      "authorized brand",
+      "brand name",
+      "product manufacturer",
+      "manufacture",
+      "manufacturers list",
+    ].some(k => normalizedKey.includes(k));
+
+    if (!looksLikeBrandColumn) return;
+
+    splitBrands(value).forEach(b => {
+      if (b && !collected.includes(b)) {
+        collected.push(b);
+      }
+    });
+  });
+
+  return collected;
+}
+
+function extractBrandTokens(value) {
+  const normalized = normalizeText(value)
+    .replace(/[()]/g, " ")
+    .replace(/&/g, " and ");
+
+  return normalized
+    .split(/[,/|؛;\-\s]+/)
+    .map(x => x.trim())
+    .filter(x => x && x.length > 1);
+}
+
+function buildBrandAliasSet(brands = []) {
+  const set = new Set();
+
+  brands.forEach(brand => {
+    const normalized = normalizeText(brand);
+
+    if (normalized) {
+      set.add(normalized);
+    }
+
+    extractBrandTokens(brand).forEach(token => {
+      set.add(token);
+    });
+  });
+
+  return Array.from(set);
+}
+
+function calculateBrandMatchScore(targetBrands = [], supplierBrands = []) {
+  const targetAliases = buildBrandAliasSet(targetBrands);
+  const supplierAliases = buildBrandAliasSet(supplierBrands);
+
+  if (!targetAliases.length || !supplierAliases.length) {
+    return {
+      matched: false,
+      score: 0,
+      matchedAliases: [],
+    };
+  }
+
+  const matchedAliases = [];
+
+  targetAliases.forEach(target => {
+    supplierAliases.forEach(supplier => {
+      // fuzzy normalized whitespace-insensitive match
+      const compactTarget = target.replace(/\s+/g, "");
+      const compactSupplier = supplier.replace(/\s+/g, "");
+
+      if (compactTarget === compactSupplier) {
+        matchedAliases.push(`${target}~${supplier}`);
+        return;
+      }
+
+      // exact match
+      if (target === supplier) {
+        matchedAliases.push(target);
+        return;
+      }
+
+      // partial / alias match
+      if (
+        target.includes(supplier) ||
+        supplier.includes(target)
+      ) {
+        matchedAliases.push(`${target}~${supplier}`);
+      }
+    });
+  });
+
+  const uniqueMatches = Array.from(new Set(matchedAliases));
+
+  return {
+    matched: uniqueMatches.length > 0,
+    score: uniqueMatches.length,
+    matchedAliases: uniqueMatches,
+  };
+}
+
 function splitSupplierCodes(value) {
   return String(value || "")
     .split(/[-,\s/|؛;]+/)
@@ -67,12 +187,27 @@ function parseSupplierMasterRow(row) {
     "نام شرکت",
   ]);
 
-  const brandRaw = getValue(row, ["Brand", "Brands", "برند"]);
+  const brandRaw = getValue(row, [
+    "Brand",
+    "Brands",
+    "برند",
+    "Manufacturer",
+    "Manufacturers",
+    "Maker",
+    "Supported Brands",
+    "Main Brand",
+    "OEM",
+  ]);
+
+  const detectedBrands = [
+    ...splitBrands(brandRaw),
+    ...extractPotentialBrandsFromRow(row),
+  ].filter(Boolean);
 
   return {
     code,
     companyName,
-    brands: splitBrands(brandRaw),
+    brands: Array.from(new Set(detectedBrands)),
     rawBrand: brandRaw,
     country: getValue(row, ["Country", "کشور"]),
     website: getValue(row, ["Website", "web site", "وبسایت"]),
@@ -114,6 +249,7 @@ export function buildSupplierIntelligence({
   currentBrands = [],
 }) {
   const targetBrands = splitBrands(currentBrands.join(","));
+  const targetBrandAliases = buildBrandAliasSet(targetBrands);
 
   const suppliers = supplierRows
     .map(parseSupplierMasterRow)
@@ -139,7 +275,13 @@ export function buildSupplierIntelligence({
 
   const rankedSuppliers = suppliers
     .map(s => {
-      const brandMatched = s.brands.some(b => targetBrands.includes(b));
+      const brandMatch = calculateBrandMatchScore(
+        targetBrands,
+        s.brands
+      );
+
+      const brandMatched = brandMatch.matched;
+
       const stats = winnerStats[s.code] || {
         successfulPurchaseCount: 0,
         successfulPurchaseAmount: 0,
@@ -151,8 +293,10 @@ export function buildSupplierIntelligence({
 
       let score = 0;
 
-      // Exact RFQ brand match is the highest priority
-      if (brandMatched) score += 120;
+      // Exact / fuzzy RFQ brand match is the highest priority
+      if (brandMatched) {
+        score += 120 + brandMatch.score * 15;
+      }
 
       // Historical successful purchases are the second highest priority
       score += Math.min(120, exactBrandPurchaseStrength);
@@ -165,6 +309,8 @@ export function buildSupplierIntelligence({
       return {
         ...s,
         brandMatched,
+        brandMatchScore: brandMatch.score,
+        matchedBrandAliases: brandMatch.matchedAliases,
         successfulPurchaseCount: stats.successfulPurchaseCount,
         successfulPurchaseAmount: stats.successfulPurchaseAmount,
         score: Math.round(score),
@@ -214,6 +360,7 @@ export function buildSupplierIntelligence({
 
   return {
     targetBrands,
+    targetBrandAliases,
     totalSuppliers: suppliers.length,
     totalWinnerRows: winners.length,
     rankedSuppliers,

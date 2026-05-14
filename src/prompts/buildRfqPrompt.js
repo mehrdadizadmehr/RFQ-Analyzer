@@ -90,12 +90,16 @@ Commercial matcher rules:
 Supplier intelligence rules:
 - supplierIntelligence is the PRIMARY source for supplier recommendations.
 - Do NOT hallucinate supplier names.
-- Prefer suppliers that historically supplied the same RFQ brand successfully.
+- Prefer suppliers that historically supplied the same RFQ brand or a strong brand alias successfully.
+- RFQ brands may contain aliases, OEM-parent relationships or partial naming differences.
+- Treat ENRAF and HONEYWELL as potentially related brands if supplier evidence supports it.
+- Treat supplier brand overlap intelligently, not only exact string equality.
+- Prefer suppliers whose historical brand aliases overlap with RFQ brand aliases.
 - Prioritize suppliers with higher successfulPurchaseCount and successfulPurchaseAmount.
 - If supplierIntelligence.topSuppliers exists, use those suppliers first.
 - Supplier suggestions must be grounded in historical supplier evidence.
 - If historical supplier evidence is weak, clearly mention uncertainty.
-- Prefer suppliers with exact RFQ brand match over generic industrial suppliers.
+- If supplier names are missing but supplier codes exist, use the supplier code and explain cautiously instead of inventing names.
 - If supplier country or sourcing region exists, use it.
 - Never invent websites, countries, or supplier history.
 
@@ -154,6 +158,7 @@ matcher_sample=${JSON.stringify((commercialMatcher?.matches || []).slice(0, 8).m
 
 Supplier intelligence:
 rfq_target_brands=${JSON.stringify(supplierIntelligence?.targetBrands || [])}
+rfq_target_brand_aliases=${JSON.stringify(supplierIntelligence?.targetBrandAliases || [])}
 total_suppliers=${supplierIntelligence?.totalSuppliers || 0}
 total_supplier_winner_rows=${supplierIntelligence?.totalWinnerRows || 0}
 
@@ -162,6 +167,8 @@ historical_top_suppliers=${JSON.stringify(
     supplierName: s.companyName,
     supplierCode: s.code,
     matchedBrands: s.brands,
+    matchedBrandAliases: s.matchedBrandAliases,
+    brandMatchScore: s.brandMatchScore,
     successfulPurchaseCount: s.successfulPurchaseCount,
     successfulPurchaseAmount: s.successfulPurchaseAmount,
     country: s.country,
@@ -215,8 +222,10 @@ Important pricing and sourcing output requirement:
 - If recognizable suppliers, sourcing channels or market patterns exist, mention possible sourcing direction briefly.
 - Supplier suggestions must stay realistic and concise.
 - Supplier suggestions should primarily come from supplierIntelligence historical ranking.
-- Prefer historical suppliers with exact brand match.
+- Prefer suppliers with strongest RFQ brand alias overlap.
 - Mention supplier purchase success evidence briefly when possible.
+- Mention brand alias linkage briefly when useful.
+- If supplier names are missing but supplier codes exist, explain cautiously instead of inventing supplier names.
 
 Original RFQ/email text for context only:
 """
@@ -306,6 +315,8 @@ JSON schema:
       "historicalScore": 0,
       "successfulPurchaseCount": 0,
       "successfulPurchaseAmount": 0,
+      "matchedBrandAliases": [],
+      "brandMatchScore": 0,
       "region": "China|UAE|Global",
       "website": "",
       "reason": ""
