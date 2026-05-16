@@ -111,6 +111,9 @@ export function useAnalysis(showToast) {
     setStepState("s1", "done");
 
     setStepState("s2", "active");
+    await new Promise(resolve =>
+      requestAnimationFrame(resolve)
+    );
     await delay(300);
 
     const purchaseStats = analyzeCustomerPurchases(
@@ -135,23 +138,45 @@ export function useAnalysis(showToast) {
         ]
       : [];
 
-    const commercialMatcher = buildCommercialMatcher({
-      requestRows: allRequestRows,
-      purchaseRows: Array.isArray(files.purchase) ? files.purchase : [],
-      currentCustomer: extractedCustomer,
-      currentBrands,
-      manualPurchaseCount,
-      manualPurchaseAmount,
+    await new Promise(resolve =>
+      setTimeout(resolve, 0)
+    );
+
+    const commercialMatcher = await new Promise(resolve => {
+      setTimeout(() => {
+        resolve(
+          buildCommercialMatcher({
+            requestRows: allRequestRows,
+            purchaseRows: Array.isArray(files.purchase)
+              ? files.purchase
+              : [],
+            currentCustomer: extractedCustomer,
+            currentBrands,
+            manualPurchaseCount,
+            manualPurchaseAmount,
+          })
+        );
+      }, 0);
     });
 
-    const supplierIntelligence = buildSupplierIntelligence({
-      supplierRows: Array.isArray(files.suppliers)
-        ? files.suppliers
-        : [],
-      winnerRows: Array.isArray(files.supplierWinners)
-        ? files.supplierWinners
-        : [],
-      currentBrands,
+    await new Promise(resolve =>
+      setTimeout(resolve, 0)
+    );
+
+    const supplierIntelligence = await new Promise(resolve => {
+      setTimeout(() => {
+        resolve(
+          buildSupplierIntelligence({
+            supplierRows: Array.isArray(files.suppliers)
+              ? files.suppliers
+              : [],
+            winnerRows: Array.isArray(files.supplierWinners)
+              ? files.supplierWinners
+              : [],
+            currentBrands,
+          })
+        );
+      }, 0);
     });
 
     console.log("Supplier Intelligence:", {
@@ -191,16 +216,29 @@ export function useAnalysis(showToast) {
     setStepState("s2", "done");
 
     setStepState("s3", "active");
+    await new Promise(resolve =>
+      requestAnimationFrame(resolve)
+    );
     await delay(300);
 
-    const brandStats = analyzeBrandProductStats(
-      files.req25,
-      files.req26,
-      files.purchase,
-      normalizedRequestText,
-      extractedCustomer,
-      commercialMatcher
+    await new Promise(resolve =>
+      setTimeout(resolve, 0)
     );
+
+    const brandStats = await new Promise(resolve => {
+      setTimeout(() => {
+        resolve(
+          analyzeBrandProductStats(
+            files.req25,
+            files.req26,
+            files.purchase,
+            normalizedRequestText,
+            extractedCustomer,
+            commercialMatcher
+          )
+        );
+      }, 0);
+    });
 
     let companySearch = null;
 
@@ -238,6 +276,9 @@ export function useAnalysis(showToast) {
 
     setStepState("s3", "done");
     setStepState("s4", "active");
+    await new Promise(resolve =>
+      requestAnimationFrame(resolve)
+    );
 
     let baseAi = null;
 
