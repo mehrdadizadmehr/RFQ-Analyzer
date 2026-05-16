@@ -43,6 +43,43 @@ function PriorityBadge({ value }) {
   );
 }
 
+function EvidenceBadge({ value }) {
+  const tone =
+    value === "Historical Proven Supplier"
+      ? {
+          label: "خرید موفق واقعی",
+          bg: "rgba(16,185,129,0.15)",
+          color: "#34d399",
+        }
+      : value === "Brand Compatible Supplier"
+        ? {
+            label: "تطابق برند / قابل بررسی",
+            bg: "rgba(59,130,246,0.15)",
+            color: "#60a5fa",
+          }
+        : {
+            label: "گزینه بالقوه",
+            bg: "rgba(148,163,184,0.15)",
+            color: "#cbd5e1",
+          };
+
+  return (
+    <span
+      style={{
+        padding: "4px 10px",
+        borderRadius: 20,
+        background: tone.bg,
+        color: tone.color,
+        fontSize: 12,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {tone.label}
+    </span>
+  );
+}
+
 function InfoLine({ label, value }) {
   if (value === undefined || value === null || value === "") {
     return null;
@@ -76,7 +113,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
           fontSize: 13,
         }}
       >
-        این بخش بر اساس سوابق واقعی خرید، Supplier Winnerها و برندهای RFQ فعلی ساخته می‌شود. تامین‌کننده‌ها بر اساس تطابق دقیق برند RFQ، تعداد خرید موفق، مبلغ خرید تاریخی و کیفیت اطلاعات رتبه‌بندی شده‌اند.
+        این بخش تامین‌کننده‌ها را بر اساس تطبیق برند RFQ، aliasهای برند، Supplier Winnerها و سابقه خرید موفق رتبه‌بندی می‌کند. تامین‌کننده‌ها به سه سطح تفکیک می‌شوند: خرید موفق واقعی، تطابق برند قابل بررسی، و گزینه بالقوه.
       </div>
 
       <div
@@ -202,7 +239,20 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                   </div>
                 </div>
 
-                <PriorityBadge value={supplier.priority} />
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <EvidenceBadge
+                    value={supplier.procurementEvidenceLevel}
+                  />
+
+                  <PriorityBadge value={supplier.priority} />
+                </div>
               </div>
 
               <div
@@ -219,6 +269,11 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                   <InfoLine
                     label="Successful Purchases"
                     value={supplier.successfulPurchaseCount}
+                  />
+
+                  <InfoLine
+                    label="Evidence Level"
+                    value={supplier.procurementEvidenceLevel}
                   />
 
                   <InfoLine

@@ -99,6 +99,7 @@ function extractBrandTokens(value) {
     .filter(x => x && x.length > 1);
 }
 
+
 function buildBrandAliasSet(brands = []) {
   const set = new Set();
 
@@ -117,9 +118,25 @@ function buildBrandAliasSet(brands = []) {
   return Array.from(set);
 }
 
+const brandAliasCache = new Map();
+
+function getCachedBrandAliases(brands = []) {
+  const cacheKey = JSON.stringify(brands || []);
+
+  if (brandAliasCache.has(cacheKey)) {
+    return brandAliasCache.get(cacheKey);
+  }
+
+  const aliases = buildBrandAliasSet(brands);
+
+  brandAliasCache.set(cacheKey, aliases);
+
+  return aliases;
+}
+
 function calculateBrandMatchScore(targetBrands = [], supplierBrands = []) {
-  const targetAliases = buildBrandAliasSet(targetBrands);
-  const supplierAliases = buildBrandAliasSet(supplierBrands);
+  const targetAliases = getCachedBrandAliases(targetBrands);
+  const supplierAliases = getCachedBrandAliases(supplierBrands);
 
   if (!targetAliases.length || !supplierAliases.length) {
     return {
@@ -129,34 +146,41 @@ function calculateBrandMatchScore(targetBrands = [], supplierBrands = []) {
     };
   }
 
+  const supplierSet = new Set(supplierAliases);
+  const compactSupplierSet = new Set(
+    supplierAliases.map(x => x.replace(/\s+/g, ""))
+  );
+
   const matchedAliases = [];
 
-  targetAliases.forEach(target => {
-    supplierAliases.forEach(supplier => {
-      // fuzzy normalized whitespace-insensitive match
-      const compactTarget = target.replace(/\s+/g, "");
-      const compactSupplier = supplier.replace(/\s+/g, "");
+  for (const target of targetAliases) {
+    const compactTarget = target.replace(/\s+/g, "");
 
-      if (compactTarget === compactSupplier) {
-        matchedAliases.push(`${target}~${supplier}`);
-        return;
-      }
+    // exact match
+    if (supplierSet.has(target)) {
+      matchedAliases.push(target);
+      continue;
+    }
 
-      // exact match
-      if (target === supplier) {
-        matchedAliases.push(target);
-        return;
-      }
+    // whitespace-insensitive match
+    if (compactSupplierSet.has(compactTarget)) {
+      matchedAliases.push(target);
+      continue;
+    }
 
-      // partial / alias match
-      if (
-        target.includes(supplier) ||
-        supplier.includes(target)
-      ) {
-        matchedAliases.push(`${target}~${supplier}`);
+    // lightweight partial match only for meaningful aliases
+    if (target.length >= 4) {
+      const partial = supplierAliases.find(
+        supplier =>
+          supplier.includes(target) ||
+          target.includes(supplier)
+      );
+
+      if (partial) {
+        matchedAliases.push(`${target}~${partial}`);
       }
-    });
-  });
+    }
+  }
 
   const uniqueMatches = Array.from(new Set(matchedAliases));
 
@@ -229,6 +253,10 @@ function parseWinnerRow(row) {
       "Supplier",
       "2025 Supplier",
       "2026 Supplier",
+      "Winner Supplier",
+      "Supplier ID",
+      "Vendor Code",
+      "Vendor",
     ])
   );
 
@@ -257,19 +285,35 @@ export function buildSupplierIntelligence({
 
   const winners = winnerRows.map(parseWinnerRow);
 
+  const normalizedSupplierMap = {};
+
+  suppliers.forEach(supplier => {
+    if (!supplier.code) return;
+
+    normalizedSupplierMap[normalizeCode(supplier.code)] = supplier.code;
+  });
+
   const winnerStats = {};
 
   winners.forEach(w => {
-    w.supplierCodes.forEach(code => {
-      if (!winnerStats[code]) {
-        winnerStats[code] = {
+    w.supplierCodes.forEach(rawCode => {
+      const normalizedCode = normalizeCode(rawCode);
+
+      const mappedSupplierCode =
+        normalizedSupplierMap[normalizedCode] || normalizedCode;
+
+      if (!mappedSupplierCode) return;
+
+      if (!winnerStats[mappedSupplierCode]) {
+        winnerStats[mappedSupplierCode] = {
           successfulPurchaseCount: 0,
           successfulPurchaseAmount: 0,
         };
       }
 
-      winnerStats[code].successfulPurchaseCount += 1;
-      winnerStats[code].successfulPurchaseAmount += w.amount;
+      winnerStats[mappedSupplierCode].successfulPurchaseCount += 1;
+      winnerStats[mappedSupplierCode].successfulPurchaseAmount +=
+        w.amount;
     });
   });
 
@@ -313,6 +357,12 @@ export function buildSupplierIntelligence({
         matchedBrandAliases: brandMatch.matchedAliases,
         successfulPurchaseCount: stats.successfulPurchaseCount,
         successfulPurchaseAmount: stats.successfulPurchaseAmount,
+        procurementEvidenceLevel:
+          stats.successfulPurchaseCount > 0
+            ? "Historical Proven Supplier"
+            : brandMatched
+              ? "Brand Compatible Supplier"
+              : "Potential Supplier",
         score: Math.round(score),
         exactBrandPurchaseStrength: Math.round(
           exactBrandPurchaseStrength
@@ -321,7 +371,12 @@ export function buildSupplierIntelligence({
           score >= 70 ? "High" : score >= 40 ? "Medium" : "Low",
       };
     })
-    .filter(s => s.brandMatched || s.successfulPurchaseCount > 0)
+    .filter(
+      s =>
+        s.brandMatched ||
+        s.successfulPurchaseCount > 0 ||
+        s.score >= 140
+    )
     .sort((a, b) => {
       // First priority: exact RFQ brand suppliers
       if (a.brandMatched !== b.brandMatched) {

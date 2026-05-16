@@ -162,7 +162,7 @@ export function useAnalysis(showToast) {
       topSuppliers: supplierIntelligence.topSuppliers.slice(0, 5),
     });
 
-    console.log("Supplier Intelligence Deep Debug:", {
+    console.log("Supplier Intelligence Debug:", {
       rfqBrands: currentBrands,
       rfqBrandAliases: supplierIntelligence.targetBrandAliases,
       supplierRowsLoaded: Array.isArray(files.suppliers)
@@ -171,24 +171,13 @@ export function useAnalysis(showToast) {
       winnerRowsLoaded: Array.isArray(files.supplierWinners)
         ? files.supplierWinners.length
         : 0,
-      rawSupplierSample: Array.isArray(files.suppliers)
-        ? files.suppliers.slice(0, 3)
-        : [],
-      rankedSupplierSample: supplierIntelligence.rankedSuppliers
-        .slice(0, 10)
-        .map(s => ({
-          supplier: s.companyName,
-          code: s.code,
-          brands: s.brands,
-          matchedAliases: s.matchedBrandAliases,
-          brandMatched: s.brandMatched,
-          brandMatchScore: s.brandMatchScore,
-          successfulPurchaseCount:
-            s.successfulPurchaseCount,
-          successfulPurchaseAmount:
-            s.successfulPurchaseAmount,
-          score: s.score,
-        })),
+      topSupplierCount: supplierIntelligence.topSuppliers.length,
+      provenSupplierCount: supplierIntelligence.topSuppliers.filter(
+        s => s.procurementEvidenceLevel === "Historical Proven Supplier"
+      ).length,
+      compatibleSupplierCount: supplierIntelligence.topSuppliers.filter(
+        s => s.procurementEvidenceLevel === "Brand Compatible Supplier"
+      ).length,
     });
 
     if (
@@ -201,6 +190,9 @@ export function useAnalysis(showToast) {
           supplierIntelligence.targetBrandAliases,
         supplierRowsLoaded: Array.isArray(files.suppliers)
           ? files.suppliers.length
+          : 0,
+        winnerRowsLoaded: Array.isArray(files.supplierWinners)
+          ? files.supplierWinners.length
           : 0,
       });
     }
