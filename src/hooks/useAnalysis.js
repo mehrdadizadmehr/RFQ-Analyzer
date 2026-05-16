@@ -159,12 +159,11 @@ export function useAnalysis(showToast) {
       totalSuppliers: supplierIntelligence.totalSuppliers,
       totalWinnerRows: supplierIntelligence.totalWinnerRows,
       rankedSuppliers: supplierIntelligence.rankedSuppliers.length,
-      topSuppliers: supplierIntelligence.topSuppliers.slice(0, 5),
+      topSupplierCount: supplierIntelligence.topSuppliers.length,
     });
 
     console.log("Supplier Intelligence Debug:", {
       rfqBrands: currentBrands,
-      rfqBrandAliases: supplierIntelligence.targetBrandAliases,
       supplierRowsLoaded: Array.isArray(files.suppliers)
         ? files.suppliers.length
         : 0,
@@ -172,29 +171,15 @@ export function useAnalysis(showToast) {
         ? files.supplierWinners.length
         : 0,
       topSupplierCount: supplierIntelligence.topSuppliers.length,
-      provenSupplierCount: supplierIntelligence.topSuppliers.filter(
-        s => s.procurementEvidenceLevel === "Historical Proven Supplier"
-      ).length,
-      compatibleSupplierCount: supplierIntelligence.topSuppliers.filter(
-        s => s.procurementEvidenceLevel === "Brand Compatible Supplier"
-      ).length,
     });
 
     if (
       supplierIntelligence.topSuppliers.length === 0 &&
       currentBrands.length > 0
     ) {
-      console.warn("Supplier Intelligence found NO supplier matches", {
-        currentBrands,
-        targetBrandAliases:
-          supplierIntelligence.targetBrandAliases,
-        supplierRowsLoaded: Array.isArray(files.suppliers)
-          ? files.suppliers.length
-          : 0,
-        winnerRowsLoaded: Array.isArray(files.supplierWinners)
-          ? files.supplierWinners.length
-          : 0,
-      });
+      console.warn(
+        "Supplier Intelligence found NO supplier matches"
+      );
     }
 
     requestStats = enrichCustomerRequestStatsWithPurchases(
@@ -284,6 +269,29 @@ export function useAnalysis(showToast) {
       };
     }
 
+    const compactCommercialMatcher = {
+      ...commercialMatcher,
+      relevantMatches: Array.isArray(
+        commercialMatcher?.relevantMatches
+      )
+        ? commercialMatcher.relevantMatches.slice(0, 12)
+        : [],
+    };
+
+    const compactSupplierIntelligence = {
+      ...supplierIntelligence,
+      rankedSuppliers: Array.isArray(
+        supplierIntelligence?.rankedSuppliers
+      )
+        ? supplierIntelligence.rankedSuppliers.slice(0, 20)
+        : [],
+      topSuppliers: Array.isArray(
+        supplierIntelligence?.topSuppliers
+      )
+        ? supplierIntelligence.topSuppliers.slice(0, 10)
+        : [],
+    };
+
     const prompt = buildRfqPrompt({
       customer: extractedCustomer,
       rfqNum: extractedRfq,
@@ -294,8 +302,8 @@ export function useAnalysis(showToast) {
       manualPurchaseAmount,
       requestStats,
       purchaseStats,
-      commercialMatcher,
-      supplierIntelligence,
+      commercialMatcher: compactCommercialMatcher,
+      supplierIntelligence: compactSupplierIntelligence,
       brandStats,
       winChance,
       extractedRfq: extractedRfqData,
@@ -307,7 +315,7 @@ export function useAnalysis(showToast) {
     const errors = {};
 
     try {
-      await callClaude(prompt, 4500)
+      await callClaude(prompt, 3200)
         .then(data => { aiResults.claude = data; })
         .catch(err => { errors.claude = err.message; });
 
