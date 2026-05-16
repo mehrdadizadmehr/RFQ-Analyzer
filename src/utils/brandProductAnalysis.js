@@ -147,6 +147,25 @@ function calculateBrandOverlap(a = "", b = "") {
   };
 }
 
+function isStrongBrandOverlap(a = "", b = "") {
+  const overlap = calculateBrandOverlap(a, b);
+
+  if (!overlap.matched) return false;
+
+  const aliasesA = buildBrandAliasSet([a]);
+  const aliasesB = buildBrandAliasSet([b]);
+
+  return aliasesA.some(x =>
+    aliasesB.some(y => {
+      if (x === y) return true;
+
+      if (x.length < 4 || y.length < 4) return false;
+
+      return x.includes(y) || y.includes(x);
+    })
+  );
+}
+
 function isValidProductValue(value) {
   const v = String(value || "").trim();
 
@@ -340,12 +359,12 @@ export function analyzeBrandProductStats(
 
       if (!normalizedBrand) return;
 
-      const requestBrandMatch = calculateBrandOverlap(
+      const requestBrandMatch = isStrongBrandOverlap(
         requestText,
         rawBrand
       );
 
-      if (!requestBrandMatch.matched) return;
+      if (!requestBrandMatch) return;
 
       const key = rawBrand.toUpperCase();
 
@@ -377,8 +396,7 @@ export function analyzeBrandProductStats(
         const customerValue = normalizeText(r?.[customerCol]);
 
         return (
-          calculateBrandOverlap(brandValue, brandNormalized)
-            .matched &&
+          isStrongBrandOverlap(brandValue, brandNormalized) &&
           normalizedCustomerName &&
           customerValue.includes(normalizedCustomerName)
         );
@@ -389,8 +407,7 @@ export function analyzeBrandProductStats(
         const customerValue = normalizeText(r?.[customerCol]);
 
         return (
-          calculateBrandOverlap(brandValue, brandNormalized)
-            .matched &&
+          isStrongBrandOverlap(brandValue, brandNormalized) &&
           (!normalizedCustomerName ||
             !customerValue.includes(normalizedCustomerName))
         );
@@ -401,10 +418,10 @@ export function analyzeBrandProductStats(
           m?.commercialInsights?.brand
         );
 
-        return calculateBrandOverlap(
+        return isStrongBrandOverlap(
           matchBrand,
           brandNormalized
-        ).matched;
+        );
       });
 
       const currentCustomerPurchaseMatches =
@@ -455,6 +472,16 @@ export function analyzeBrandProductStats(
 
         totalRevenue,
 
+        currentCustomerRevenue: currentCustomerPurchaseMatches.reduce(
+          (s, m) => s + (m?.commercialInsights?.revenue || 0),
+          0
+        ),
+
+        otherCustomersRevenue: otherCustomerPurchaseMatches.reduce(
+          (s, m) => s + (m?.commercialInsights?.revenue || 0),
+          0
+        ),
+
         hasRealCommercialHistory:
           relevantCommercialMatches.length > 0,
       };
@@ -463,7 +490,32 @@ export function analyzeBrandProductStats(
 
   const brandDemandStats = buildBrandDemandStats();
 
-  const topBrandsAll = getTopCounts(allRows, brandCol, 7);
+  const customerSpecificBrandPurchaseCount = brandDemandStats.reduce(
+    (s, x) => s + (x.currentCustomerSuccessfulCount || 0),
+    0
+  );
+
+  const marketSimilarBrandPurchaseCount = brandDemandStats.reduce(
+    (s, x) => s + (x.otherCustomersSuccessfulCount || 0),
+    0
+  );
+
+  const customerSpecificBrandPurchaseAmount = brandDemandStats.reduce(
+    (s, x) => s + (x.currentCustomerRevenue || 0),
+    0
+  );
+
+  const marketSimilarBrandPurchaseAmount = brandDemandStats.reduce(
+    (s, x) => s + (x.otherCustomersRevenue || 0),
+    0
+  );
+
+  const rfqOnlyTopBrands = brandDemandStats.map(x => ({
+    name: x.brand,
+    count: x.totalRequestCount,
+  }));
+
+  const historicalTopBrandsAll = getTopCounts(allRows, brandCol, 7);
   const topPartsAll = getTopCounts(allRows, partCol, 7);
   const topCategoriesAll = getTopCounts(allRows, categoryCol, 7);
 
@@ -523,7 +575,8 @@ export function analyzeBrandProductStats(
 
 
   return {
-    topBrandsAll,
+    topBrandsAll: rfqOnlyTopBrands,
+    historicalTopBrandsAll,
     brandDemandStats,
     topCategoriesAll,
 
@@ -541,6 +594,11 @@ export function analyzeBrandProductStats(
     similarSuccessfulPurchasesCount,
     similarSuccessfulPurchasesAmount,
 
+    customerSpecificBrandPurchaseCount,
+    customerSpecificBrandPurchaseAmount,
+    marketSimilarBrandPurchaseCount,
+    marketSimilarBrandPurchaseAmount,
+
     similarPurchaseEvidence: {
       brandPurchaseCount: mentionedBrandPurchaseRows.length,
       partPurchaseCount: mentionedPartPurchaseRows.length,
@@ -548,13 +606,18 @@ export function analyzeBrandProductStats(
       brandSoldOpportunityCount: mentionedBrandSoldRows.length,
       partSoldOpportunityCount: mentionedPartSoldRows.length,
       categorySoldOpportunityCount: mentionedCategorySoldRows.length,
+
+      customerSpecificBrandPurchaseCount,
+      customerSpecificBrandPurchaseAmount,
+      marketSimilarBrandPurchaseCount,
+      marketSimilarBrandPurchaseAmount,
     },
 
     summary:
       brandDemandStats.length > 0
-        ? `برندهای RFQ فعلی در سوابق واقعی خرید و تعاملات تجاری سیستم شناسایی شدند. ${topBrandNames || ""}`
+        ? `تحلیل برند فقط بر اساس برندهای شناسایی‌شده در RFQ فعلی انجام شده است. ${topBrandNames || ""}`
         : similarSuccessfulPurchasesCount > 0
-          ? `سوابق خرید و RFQ مشابه در فایل‌های قبلی پیدا شد.`
-          : "هیچ سابقه تجاری معناداری از برندهای این RFQ در فایل‌های قبلی پیدا نشد.",
+          ? `سوابق خرید و RFQ مشابه برای برند/مدل همین درخواست در فایل‌های قبلی پیدا شد.`
+          : "هیچ سابقه تجاری معناداری از برندهای همین RFQ در فایل‌های قبلی پیدا نشد.",
   };
 }

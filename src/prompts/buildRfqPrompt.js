@@ -76,7 +76,8 @@ Company background rules:
 
 Similar purchase rule:
 - If similar brand, part number, or product category appears in uploaded files and has ended in Purchase or sold opportunity, mention it clearly.
-- Mention that the purchase/sold history may belong to other customers, not necessarily this customer.
+- customerSpecificPurchaseEvidence must describe purchases/orders belonging to this exact customer only.
+- marketSimilarPurchaseEvidence must describe similar historical purchases from other customers for the same brand/category.
 - Keep all brand, part, category names in English.
 
 Commercial matcher rules:
@@ -86,6 +87,9 @@ Commercial matcher rules:
 - Use matcher confidence carefully: high confidence can be treated as real purchase linkage; medium confidence should be mentioned as likely linkage; low confidence should be treated cautiously.
 - Use matched_average_margin and matched_gross_profit to improve customer quality, brand attractiveness, and sales recommendation.
 - Do not invent matched deals that are not present in commercialMatcher.
+- Distinguish clearly between purchases/orders belonging to this exact customer and similar purchases from other customers for the same brand/category.
+- When discussing historical purchases, explicitly mention whether the evidence belongs to this customer or to broader market history.
+- Never mix customer-specific purchase history with general brand demand history.
 
 Supplier intelligence rules:
 - supplierIntelligence is the PRIMARY source for supplier recommendations.
@@ -144,7 +148,7 @@ matched_revenue=${commercialMatcher?.totalRevenue || 0}
 matched_cost=${commercialMatcher?.totalCost || 0}
 matched_gross_profit=${commercialMatcher?.totalGrossProfit || 0}
 matched_average_margin=${commercialMatcher?.averageMargin || 0}
-matcher_sample=${JSON.stringify((commercialMatcher?.matches || []).slice(0, 8).map(m => ({
+matcher_sample=${JSON.stringify((commercialMatcher?.matches || []).slice(0, 4).map(m => ({
   confidence: m.confidence,
   score: m.score,
   reasons: m.matchReasons,
@@ -181,12 +185,16 @@ historical_top_suppliers=${JSON.stringify(
 )}
 
 Brand/Product stats from uploaded files:
-top_brands_all=${(brandStats.topBrandsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
+historical_market_brand_frequency=${(brandStats.topBrandsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 top_products_all=${(brandStats.topPartsAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 top_categories_all=${(brandStats.topCategoriesAll || []).map(x => `${x.name}:${x.count}`).join(", ") || "unknown"}
 
 similar_successful_purchase_records=${brandStats.similarSuccessfulPurchasesCount}
 similar_successful_purchase_amount=${brandStats.similarSuccessfulPurchasesAmount}
+customer_specific_brand_purchase_count=${brandStats.customerSpecificBrandPurchaseCount || 0}
+customer_specific_brand_purchase_amount=${brandStats.customerSpecificBrandPurchaseAmount || 0}
+market_similar_brand_purchase_count=${brandStats.marketSimilarBrandPurchaseCount || 0}
+market_similar_brand_purchase_amount=${brandStats.marketSimilarBrandPurchaseAmount || 0}
 
 Pricing expectation:
 - extracted_item_count=${extractedItems.length}
@@ -218,6 +226,9 @@ Important pricing and sourcing output requirement:
 - estimatedTotalChina must summarize the full RFQ estimated total for China sourcing.
 - estimatedTotalUAE must summarize the full RFQ estimated total for UAE market pricing.
 - pricingNotes must explain assumptions briefly in Persian.
+- recommendation must include a suggested target gross margin range and a short business justification.
+- Margin recommendation should consider urgency, historical margin evidence, RFQ complexity, sourcing difficulty, and customer quality.
+- If commercialMatcher average margin exists, use it as one input for recommendation.
 - Each part must include estimatedLineTotalChina and estimatedLineTotalUAE.
 - If recognizable suppliers, sourcing channels or market patterns exist, mention possible sourcing direction briefly.
 - Supplier suggestions must stay realistic and concise.
@@ -226,6 +237,13 @@ Important pricing and sourcing output requirement:
 - Mention supplier purchase success evidence briefly when possible.
 - Mention brand alias linkage briefly when useful.
 - If supplier names are missing but supplier codes exist, explain cautiously instead of inventing supplier names.
+- recommendedMarginStrategy must include minimumAcceptableMargin, targetMargin, stretchMargin, reasoning and negotiationNote.
+- minimumAcceptableMargin is the lowest margin the sales team should accept.
+- targetMargin is the recommended quote planning margin.
+- stretchMargin is the higher margin to try first if urgency, OEM scarcity or customer quality supports it.
+- sourcingStrategy must clearly separate OEM, Authorized Distributor, Trusted Trader and Alternative/Equivalent routes.
+- If RFQ asks for original/OEM/new/certificate, prefer OEM or Authorized Distributor unless price pressure is extreme.
+- If equivalent alternatives are not acceptable, explicitly say Strict OEM Required.
 
 Original RFQ/email text for context only:
 """
@@ -282,7 +300,9 @@ JSON schema:
     "productDemandSignal": "",
     "repeatCountComment": "",
     "valueComment": "",
-    "similarPurchaseEvidence": ""
+    "similarPurchaseEvidence": "",
+    "customerSpecificPurchaseEvidence": "",
+    "marketSimilarPurchaseEvidence": ""
   },
   "winChanceCommentary": {
     "scoreComment": "",
@@ -322,6 +342,14 @@ JSON schema:
       "reason": ""
     }
   ],
+  "sourcingStrategy": {
+    "preferredRoute": "OEM|Authorized Distributor|Trusted Trader|Alternative/Equivalent",
+    "oemRequirementLevel": "Strict OEM Required|OEM Preferred|Equivalent Acceptable|Unknown",
+    "certificateRequirement": "",
+    "recommendedSupplierType": "",
+    "sourcingRisk": "",
+    "sourcingReason": ""
+  },
   "commercialInsights": {
     "procurementComplexity": "",
     "pricingPressure": "",
@@ -333,6 +361,15 @@ JSON schema:
     "conversionQuality": ""
   },
   "recommendation": "",
+  "recommendedMarginRange": "",
+  "recommendedMarginReason": "",
+  "recommendedMarginStrategy": {
+    "minimumAcceptableMargin": "",
+    "targetMargin": "",
+    "stretchMargin": "",
+    "reasoning": "",
+    "negotiationNote": ""
+  },
   "risks": "",
   "nextStep": ""
 }
@@ -346,6 +383,13 @@ Critical response optimization rules:
 - Do not generate unnecessary long paragraphs.
 - Reuse and improve the base analysis instead of rewriting everything.
 - When giving sales recommendation, use commercialMatcher evidence if available: revenue, margin, supplier, match confidence, and real purchase linkage.
+- Brand analysis must focus primarily on the brands detected in the current RFQ, not unrelated popular brands from uploaded files.
+- customerSpecificPurchaseEvidence must only describe purchases/orders belonging to this exact customer.
+- marketSimilarPurchaseEvidence must describe similar historical purchases from other customers for the same brand/category.
+- recommendation should clearly explain why the suggested margin range is commercially reasonable.
+- recommendedMarginStrategy must be practical for sales execution, not generic.
+- sourcingStrategy must explain whether to source through OEM, Authorized Distributor, Trusted Trader, or Alternative/Equivalent route.
+- If OEM/original/new/certificate wording exists in the RFQ, sourcingStrategy.oemRequirementLevel should usually be Strict OEM Required or OEM Preferred.
 - Prioritize stability and valid JSON structure over creativity.
 `;
 }

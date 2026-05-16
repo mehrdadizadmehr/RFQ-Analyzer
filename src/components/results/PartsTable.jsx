@@ -33,6 +33,8 @@ export default function PartsTable({ parts, ai }) {
     };
   }, [safeParts]);
 
+  const sourcingStrategy = ai?.sourcingStrategy || null;
+
   const toggleRow = index => {
     setExpandedRows(prev => ({
       ...prev,
@@ -295,6 +297,63 @@ export default function PartsTable({ parts, ai }) {
             </strong>
             <br />
             {ai.pricingNotes}
+          </div>
+        )}
+
+        {!!sourcingStrategy && (
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: `1px solid ${bdr}`,
+              whiteSpace: "pre-line",
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>
+              استراتژی تامین / OEM Sourcing:
+            </strong>
+
+            <div style={{ marginTop: 10 }}>
+              <strong style={{ color: "#cbd5e1" }}>
+                مسیر پیشنهادی تامین:
+              </strong>{" "}
+              {sourcingStrategy.preferredRoute || "—"}
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <strong style={{ color: "#cbd5e1" }}>
+                سطح الزام OEM:
+              </strong>{" "}
+              {sourcingStrategy.oemRequirementLevel || "—"}
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <strong style={{ color: "#cbd5e1" }}>
+                مدارک / Certificate مورد نیاز:
+              </strong>{" "}
+              {sourcingStrategy.certificateRequirement || "—"}
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <strong style={{ color: "#cbd5e1" }}>
+                نوع تامین‌کننده پیشنهادی:
+              </strong>{" "}
+              {sourcingStrategy.recommendedSupplierType || "—"}
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <strong style={{ color: "#cbd5e1" }}>
+                ریسک تامین:
+              </strong>{" "}
+              {sourcingStrategy.sourcingRisk || "—"}
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <strong style={{ color: "#cbd5e1" }}>
+                دلیل پیشنهاد مسیر تامین:
+              </strong>{" "}
+              {sourcingStrategy.sourcingReason || "—"}
+            </div>
           </div>
         )}
       </div>

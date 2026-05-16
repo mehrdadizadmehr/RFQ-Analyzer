@@ -154,6 +154,30 @@ export default function BrandStatsCard({ brandStats, ai }) {
           </>
         )}
 
+        {!!ai?.brandProductReview?.customerSpecificPurchaseEvidence && (
+          <>
+            <div style={divider} />
+
+            <div>
+              <strong>سوابق خرید همین مشتری برای برند RFQ:</strong>
+              <br />
+              {ai.brandProductReview.customerSpecificPurchaseEvidence}
+            </div>
+          </>
+        )}
+
+        {!!ai?.brandProductReview?.marketSimilarPurchaseEvidence && (
+          <>
+            <div style={divider} />
+
+            <div>
+              <strong>سوابق مشابه بازار برای همین برند/دسته:</strong>
+              <br />
+              {ai.brandProductReview.marketSimilarPurchaseEvidence}
+            </div>
+          </>
+        )}
+
         {!!ai?.brandProductReview?.brandAttractiveness && (
           <>
             <div style={divider} />
@@ -162,43 +186,6 @@ export default function BrandStatsCard({ brandStats, ai }) {
               <strong>جذابیت برند از دید فروش:</strong>
               <br />
               {ai.brandProductReview.brandAttractiveness}
-            </div>
-          </>
-        )}
-
-        {!!ai?.supplierSuggestions?.length && (
-          <>
-            <div style={divider} />
-
-            <div>
-              <strong>پیشنهاد تامین‌کننده / سورسینگ:</strong>
-
-              <div style={{ marginTop: 10 }}>
-                {ai.supplierSuggestions.slice(0, 3).map((s, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      marginBottom: 10,
-                      padding: 10,
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      borderRadius: 8,
-                      background: "rgba(255,255,255,0.02)",
-                    }}
-                  >
-                    <div>
-                      <strong>{s.supplierName || "Unknown Supplier"}</strong>
-                    </div>
-
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>
-                      منطقه تامین: {s.region || "Global"}
-                    </div>
-
-                    <div style={{ marginTop: 6 }}>
-                      {s.reason || "—"}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </>
         )}

@@ -106,6 +106,12 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
     commercialMatcher.currentBrands || []
   ).map(x => String(x).toLowerCase());
 
+  const normalizedCustomerName = String(
+    commercialMatcher.currentCustomer || ""
+  )
+    .trim()
+    .toLowerCase();
+
   const topRelevantMatches = relevantMatches
     .filter(m => {
       if (!m.matchedRequest) return false;
@@ -124,6 +130,37 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
       const bRevenue = b?.commercialInsights?.revenue || 0;
 
       return bRevenue - aRevenue || b.score - a.score;
+    });
+
+  const customerSpecificMatches = topRelevantMatches
+    .filter(m => {
+      const customer = String(
+        m?.matchedRequest?.Customer ||
+          m?.commercialInsights?.purchaseCustomer ||
+          m?.commercialInsights?.requestCustomer ||
+          ""
+      ).toLowerCase();
+
+      return (
+        normalizedCustomerName &&
+        customer.includes(normalizedCustomerName)
+      );
+    })
+    .slice(0, 5);
+
+  const marketSimilarMatches = topRelevantMatches
+    .filter(m => {
+      const customer = String(
+        m?.matchedRequest?.Customer ||
+          m?.commercialInsights?.purchaseCustomer ||
+          m?.commercialInsights?.requestCustomer ||
+          ""
+      ).toLowerCase();
+
+      return (
+        !normalizedCustomerName ||
+        !customer.includes(normalizedCustomerName)
+      );
     })
     .slice(0, 5);
 
@@ -161,7 +198,13 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
         }}
       >
         <div>
-          این بخش فقط سوابق تجاری مرتبط با همین RFQ را نشان می‌دهد؛ یعنی خریدها، PIها، Supplierها و تعاملاتی که از نظر برند، مشتری یا Request Code به درخواست فعلی نزدیک هستند. هدف این بخش پیدا کردن سابقه واقعی تجاری برای همین نوع RFQ است، نه نمایش همه فعالیت‌های تاریخی مشتری.
+          این بخش سوابق تجاری مرتبط با RFQ فعلی را در دو دسته نمایش می‌دهد:
+          <br />
+          1) خریدها و سفارش‌های واقعی همین مشتری
+          <br />
+          2) خریدهای مشابه بازار برای همین برند/دسته کالا در سایر مشتریان
+          <br />
+          هدف این بخش کمک به تصمیم‌گیری فروش، Margin، انتخاب Supplier و ارزیابی شانس برنده‌شدن RFQ است.
         </div>
 
         <div style={divider} />
@@ -247,15 +290,16 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
               />
             </div>
 
-            {topRelevantMatches.length > 0 && (
+            {(customerSpecificMatches.length > 0 ||
+              marketSimilarMatches.length > 0) && (
               <>
                 <div style={divider} />
 
                 <div>
-                  <strong>نمونه خریدهای واقعی مشابه:</strong>
+                  <strong>سوابق خرید واقعی همین مشتری:</strong>
 
                   <div style={{ marginTop: 10 }}>
-                    {topRelevantMatches.map((m, i) => (
+                    {customerSpecificMatches.map((m, i) => (
                       <div
                         key={i}
                         style={{
@@ -431,6 +475,110 @@ export default function CommercialMatcherCard({ commercialMatcher }) {
                     ))}
                   </div>
                 </div>
+
+                {marketSimilarMatches.length > 0 && (
+                  <>
+                    <div style={divider} />
+
+                    <div>
+                      <strong>
+                        سوابق مشابه بازار برای همین برند/دسته کالا:
+                      </strong>
+
+                      <div
+                        style={{
+                          marginTop: 6,
+                          marginBottom: 12,
+                          color: "#94a3b8",
+                          lineHeight: 1.9,
+                        }}
+                      >
+                        این بخش مربوط به خریدها و سفارش‌های سایر مشتریان برای برند یا دسته مشابه RFQ فعلی است و لزوماً متعلق به همین مشتری نیست.
+                      </div>
+
+                      <div style={{ marginTop: 10 }}>
+                        {marketSimilarMatches.map((m, i) => (
+                          <div
+                            key={`market-${i}`}
+                            style={{
+                              marginBottom: 10,
+                              padding: 12,
+                              borderRadius: 10,
+                              background: "rgba(59,130,246,0.04)",
+                              border:
+                                "1px solid rgba(59,130,246,0.10)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                flexWrap: "wrap",
+                                marginBottom: 8,
+                              }}
+                            >
+                              <strong style={{ color: "#e2e8f0" }}>
+                                سابقه مشابه بازار #{i + 1}
+                              </strong>
+
+                              <span
+                                style={{
+                                  padding: "2px 10px",
+                                  borderRadius: 20,
+                                  fontSize: 11,
+                                  background: "rgba(59,130,246,0.15)",
+                                  color: "#60a5fa",
+                                }}
+                              >
+                                Market Similarity
+                              </span>
+                            </div>
+
+                            <div
+                              style={{
+                                color: "#94a3b8",
+                                marginBottom: 8,
+                                lineHeight: 1.9,
+                              }}
+                            >
+                              <InfoLine
+                                label="Brand"
+                                value={m.commercialInsights?.brand}
+                              />
+
+                              <InfoLine
+                                label="Supplier"
+                                value={m.commercialInsights?.supplier}
+                              />
+
+                              <InfoLine
+                                label="Customer"
+                                value={
+                                  m.matchedRequest?.Customer ||
+                                  m.commercialInsights?.purchaseCustomer ||
+                                  m.commercialInsights?.requestCustomer
+                                }
+                              />
+
+                              <InfoLine
+                                label="Revenue"
+                                value={formatMoney(
+                                  m.commercialInsights?.revenue || 0
+                                )}
+                              />
+
+                              <InfoLine
+                                label="Margin"
+                                value={`${m.commercialInsights?.marginPercent || 0}%`}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </>
