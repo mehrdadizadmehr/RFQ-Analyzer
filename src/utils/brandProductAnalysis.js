@@ -3,7 +3,91 @@ import { normalizeText, parseNumber } from "./numbers";
 
 const VALUE_WITH_UNIT_RE = /^>?\s*\d+(\.\d+)?\s*(v|vac|vdc|a|ma|w|kw|hz|khz|mhz|bar|psi|pa|kpa|mpa|rpm|mm|cm|m|kg|g|pcs|pc|ea|set|sets|lot|lots|aed|usd|rmb|cny|eur|%|°c|c)$/i;
 const NUMERIC_OPERATOR_RE = /^[<>≤≥=~]\s*\d+(\.\d+)?$/;
+
 const MOSTLY_NUMERIC_RE = /^[<>≤≥=~\s\d.,/%+-]+$/;
+
+const BRAND_NOISE_PATTERNS = [
+  "multibrand",
+  "multi brand",
+  "website",
+  "ltd",
+  "co ltd",
+  "company",
+  "group",
+  "general",
+  "trading",
+  "industrial",
+  "automation",
+  "technik",
+  "technologies",
+];
+
+const CANONICAL_BRAND_ALIASES = {
+  siemens: [
+    "siemens",
+    "iemens",
+    "siemens ag",
+    "siemens ltd",
+    "siemens website",
+  ],
+  abb: ["abb", "a b b"],
+  honeywell: ["honeywell", "enraf"],
+  schneider: ["schneider", "schneider electric"],
+  emerson: ["emerson", "fisher"],
+};
+
+function normalizeCanonicalBrand(value) {
+  const normalized = normalizeText(value || "");
+
+  if (!normalized) return "";
+
+  for (const [canonical, aliases] of Object.entries(
+    CANONICAL_BRAND_ALIASES
+  )) {
+    if (
+      aliases.some(
+        alias =>
+          normalized.includes(alias) ||
+          alias.includes(normalized)
+      )
+    ) {
+      return canonical.toUpperCase();
+    }
+  }
+
+  return String(value || "").trim().toUpperCase();
+}
+
+function isBrandNoise(value) {
+  const normalized = normalizeText(value || "");
+
+  if (!normalized) return true;
+
+  if (normalized.length <= 2) return true;
+
+  if (
+    BRAND_NOISE_PATTERNS.some(pattern =>
+      normalized.includes(pattern)
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    normalized.includes("/") ||
+    normalized.includes("http")
+  ) {
+    return true;
+  }
+
+  const tokenCount = normalized
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  if (tokenCount >= 6) return true;
+
+  return false;
+}
 
 function looksLikeEngineeringGarbage(value) {
   const v = String(value || "").trim();
@@ -366,7 +450,11 @@ export function analyzeBrandProductStats(
 
       if (!requestBrandMatch) return;
 
-      const key = rawBrand.toUpperCase();
+      const key = normalizeCanonicalBrand(rawBrand);
+
+      if (isBrandNoise(key)) {
+        return;
+      }
 
       map[key] = (map[key] || 0) + 1;
     });
@@ -388,7 +476,8 @@ export function analyzeBrandProductStats(
     if (!brandCol || !mentionedBrands.length) return [];
 
     return mentionedBrands.map(item => {
-      const brandNormalized = normalizeText(item.brand);
+      const canonicalBrand = normalizeCanonicalBrand(item.brand);
+      const brandNormalized = normalizeText(canonicalBrand);
       const brandAliases = buildBrandAliasSet([item.brand]);
 
       const currentCustomerRows = allRows.filter(r => {
@@ -455,6 +544,7 @@ export function analyzeBrandProductStats(
 
       return {
         brand: item.brand,
+        canonicalBrand,
         brandAliases,
 
         currentCustomerRequestCount: currentCustomerRows.length,
@@ -511,7 +601,7 @@ export function analyzeBrandProductStats(
   );
 
   const rfqOnlyTopBrands = brandDemandStats.map(x => ({
-    name: x.brand,
+    name: x.canonicalBrand || x.brand,
     count: x.totalRequestCount,
   }));
 
@@ -566,10 +656,11 @@ export function analyzeBrandProductStats(
   ].reduce((s, r) => s + parseNumber(r[amountCol]), 0);
 
   const topBrandNames = brandDemandStats
-    .slice(0, 5)
+    .filter(x => !isBrandNoise(x.brand))
+    .slice(0, 3)
     .map(
       x =>
-        `${x.brand} (این مشتری: ${x.currentCustomerRequestCount} | سایر مشتریان: ${x.otherCustomersRequestCount})`
+        `${x.canonicalBrand || x.brand} | خرید همین مشتری: ${x.currentCustomerSuccessfulCount} | خرید بازار: ${x.otherCustomersSuccessfulCount}`
     )
     .join("، ");
 
@@ -615,7 +706,7 @@ export function analyzeBrandProductStats(
 
     summary:
       brandDemandStats.length > 0
-        ? `تحلیل برند فقط بر اساس برندهای شناسایی‌شده در RFQ فعلی انجام شده است. ${topBrandNames || ""}`
+        ? `تحلیل برند فقط بر اساس برندهای واقعی و canonical شناسایی‌شده در RFQ انجام شده است. ${topBrandNames || ""}`
         : similarSuccessfulPurchasesCount > 0
           ? `سوابق خرید و RFQ مشابه برای برند/مدل همین درخواست در فایل‌های قبلی پیدا شد.`
           : "هیچ سابقه تجاری معناداری از برندهای همین RFQ در فایل‌های قبلی پیدا نشد.",
