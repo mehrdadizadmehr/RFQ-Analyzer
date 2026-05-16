@@ -1,13 +1,13 @@
 import { card, secTitle, bar, divider } from "../../styles/theme";
 
-function formatMoney(value) {
+function formatMoney(value, currency = "¥") {
   const n = Number(value || 0);
 
   if (!Number.isFinite(n) || n <= 0) return "—";
 
-  return new Intl.NumberFormat("en-US", {
+  return `${currency}${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
-  }).format(n);
+  }).format(n)}`;
 }
 
 function PriorityBadge({ value }) {
@@ -305,14 +305,33 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
               >
                 <div>
                   <InfoLine
-                    label="تعداد خرید موفق از این تامین‌کننده"
+                    label="تعداد سفارش / خرید موفق ثبت‌شده"
                     value={supplier.successfulPurchaseCount || 0}
                   />
 
                   <InfoLine
-                    label="مبلغ خرید موفق از این تامین‌کننده"
-                    value={formatMoney(supplier.successfulPurchaseAmount)}
+                    label="مبلغ خرید موفق ثبت‌شده"
+                    value={formatMoney(
+                      supplier.successfulPurchaseAmount,
+                      "¥"
+                    )}
                   />
+
+                  {(supplier.successfulPurchaseCount || 0) > 0 && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: "6px 10px",
+                        borderRadius: 10,
+                        background: "rgba(16,185,129,0.10)",
+                        color: "#34d399",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      این تامین‌کننده در فایل Winner سابقه خرید واقعی دارد.
+                    </div>
+                  )}
 
                   <InfoLine
                     label="سطح شواهد تامین"

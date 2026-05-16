@@ -212,6 +212,30 @@ function splitSupplierCodes(value) {
     .filter(code => code.startsWith("S") || code.startsWith("KAMA"));
 }
 
+function buildSupplierCodeAliases(supplier) {
+  const aliases = new Set();
+
+  if (supplier.code) {
+    aliases.add(normalizeCode(supplier.code));
+  }
+
+  (supplier.purchaseCodes || []).forEach(code => {
+    const normalized = normalizeCode(code);
+
+    if (normalized) {
+      aliases.add(normalized);
+    }
+  });
+
+  const companyNormalized = normalizeCode(supplier.companyName);
+
+  if (companyNormalized) {
+    aliases.add(companyNormalized);
+  }
+
+  return Array.from(aliases);
+}
+
 function parseSupplierMasterRow(row) {
   const code = normalizeCode(
     getValue(row, ["Supplier Code", "Code", "کد", "supplier code"])
@@ -259,14 +283,24 @@ function parseSupplierMasterRow(row) {
 }
 
 function parseWinnerRow(row) {
-  const supplierCodes = splitSupplierCodes(
+  const collectedCodes = [];
+  let totalAmount = 0;
+
+  const pushCodes = value => {
+    splitSupplierCodes(value).forEach(code => {
+      if (code && !collectedCodes.includes(code)) {
+        collectedCodes.push(code);
+      }
+    });
+  };
+
+  // Generic/fallback columns
+  pushCodes(
     getValue(row, [
       "Supplier Code",
       "Supplier Winner",
       "Winner",
       "Supplier",
-      "2025 Supplier",
-      "2026 Supplier",
       "Winner Supplier",
       "Supplier ID",
       "Vendor Code",
@@ -274,13 +308,61 @@ function parseWinnerRow(row) {
     ])
   );
 
-  const amount =
-    cleanNumber(getValue(row, ["Amount", "Total", "Purchase Amount"])) ||
-    cleanNumber(getValue(row, ["2025 Amount", "2026 Amount"]));
+  totalAmount += cleanNumber(
+    getValue(row, [
+      "Amount",
+      "Total",
+      "Purchase Amount",
+    ])
+  );
+
+  // HTML logic parity:
+  // 2025 => amount: Unnamed:1 | supplier: Unnamed:2
+  // 2026 => amount: Unnamed:6 | supplier: Unnamed:7
+
+  const yearMappings = [
+    {
+      amountKeys: ["Unnamed: 1", "2025 Amount"],
+      supplierKeys: [
+        "Unnamed: 2",
+        "2025 Supplier",
+      ],
+    },
+    {
+      amountKeys: ["Unnamed: 6", "2026 Amount"],
+      supplierKeys: [
+        "Unnamed: 7",
+        "2026 Supplier",
+      ],
+    },
+  ];
+
+  yearMappings.forEach(mapping => {
+    const amount = cleanNumber(
+      getValue(row, mapping.amountKeys)
+    );
+
+    const supplierValue = getValue(
+      row,
+      mapping.supplierKeys
+    );
+
+    const yearCodes = splitSupplierCodes(supplierValue);
+
+    yearCodes.forEach(code => {
+      if (code && !collectedCodes.includes(code)) {
+        collectedCodes.push(code);
+      }
+    });
+
+    if (yearCodes.length > 0 && amount > 0) {
+      totalAmount += amount;
+    }
+  });
 
   return {
-    supplierCodes,
-    amount,
+    supplierCodes: collectedCodes,
+    amount: totalAmount,
     raw: row,
   };
 }
@@ -298,6 +380,12 @@ export function buildSupplierIntelligence({
     .filter(s => s.code || s.companyName);
 
   const winners = winnerRows.map(parseWinnerRow);
+  console.log("Winner parsing sample:",
+    winners.slice(0, 3).map(w => ({
+      supplierCodes: w.supplierCodes,
+      amount: w.amount,
+    }))
+  );
 
   const filteredSuppliers = suppliers.filter(s => {
     if (!targetBrands.length) return true;
@@ -315,10 +403,17 @@ export function buildSupplierIntelligence({
   const normalizedSupplierMap = {};
 
   suppliers.forEach(supplier => {
-    if (!supplier.code) return;
+    buildSupplierCodeAliases(supplier).forEach(alias => {
+      if (!alias) return;
 
-    normalizedSupplierMap[normalizeCode(supplier.code)] = supplier.code;
+      normalizedSupplierMap[alias] = supplier.code;
+    });
   });
+
+  console.log(
+    "Supplier alias sample:",
+    Object.entries(normalizedSupplierMap).slice(0, 10)
+  );
 
   const winnerStats = {};
 
@@ -327,7 +422,11 @@ export function buildSupplierIntelligence({
       const normalizedCode = normalizeCode(rawCode);
 
       const mappedSupplierCode =
-        normalizedSupplierMap[normalizedCode] || normalizedCode;
+        normalizedSupplierMap[normalizedCode] ||
+        normalizedSupplierMap[
+          normalizedCode.replace(/^(KAMA)/, "S")
+        ] ||
+        normalizedCode;
 
       if (!mappedSupplierCode) return;
 
@@ -344,6 +443,11 @@ export function buildSupplierIntelligence({
     });
   });
 
+  console.log(
+    "Winner stats sample:",
+    Object.entries(winnerStats).slice(0, 10)
+  );
+
   const rankedSuppliers = filteredSuppliers
     .map(s => {
       const brandMatch = calculateBrandMatchScore(
@@ -357,6 +461,18 @@ export function buildSupplierIntelligence({
         successfulPurchaseCount: 0,
         successfulPurchaseAmount: 0,
       };
+
+      const purchaseCodeStats = (s.purchaseCodes || [])
+        .map(code => winnerStats[normalizeCode(code)])
+        .filter(Boolean);
+
+      purchaseCodeStats.forEach(extraStats => {
+        stats.successfulPurchaseCount +=
+          extraStats.successfulPurchaseCount || 0;
+
+        stats.successfulPurchaseAmount +=
+          extraStats.successfulPurchaseAmount || 0;
+      });
 
       const exactBrandPurchaseStrength =
         stats.successfulPurchaseCount * 12 +
