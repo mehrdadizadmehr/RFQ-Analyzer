@@ -80,6 +80,7 @@ function EvidenceBadge({ value }) {
   );
 }
 
+
 function InfoLine({ label, value }) {
   if (value === undefined || value === null || value === "") {
     return null;
@@ -89,6 +90,43 @@ function InfoLine({ label, value }) {
     <div style={{ marginBottom: 4 }}>
       <strong>{label}:</strong> {value}
     </div>
+  );
+}
+
+function LinkButton({ label, url }) {
+  if (!url) return null;
+
+  const safeUrl = String(url || "").trim();
+
+  if (!safeUrl || /^s\d+$/i.test(safeUrl)) return null;
+
+  const href = /^https?:\/\//i.test(safeUrl)
+    ? safeUrl
+    : `https://${safeUrl}`;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "6px 12px",
+        borderRadius: 999,
+        background: "rgba(59,130,246,0.15)",
+        color: "#93c5fd",
+        border: "1px solid rgba(59,130,246,0.25)",
+        textDecoration: "none",
+        fontSize: 12,
+        fontWeight: 700,
+        marginRight: 6,
+        marginTop: 6,
+      }}
+    >
+      {label}
+    </a>
   );
 }
 
@@ -102,7 +140,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ ...secTitle, marginBottom: 12 }}>
         <div style={bar} />
-        🏭 Supplier & Brand Alias Intelligence
+        🏭 Supplier Intelligence
       </div>
 
       <div
@@ -113,7 +151,7 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
           fontSize: 13,
         }}
       >
-        این بخش تامین‌کننده‌ها را بر اساس تطبیق برند RFQ، aliasهای برند، Supplier Winnerها و سابقه خرید موفق رتبه‌بندی می‌کند. تامین‌کننده‌ها به سه سطح تفکیک می‌شوند: خرید موفق واقعی، تطابق برند قابل بررسی، و گزینه بالقوه.
+        این بخش تامین‌کننده‌های مرتبط با برند RFQ را نشان می‌دهد. اولویت با تامین‌کننده‌هایی است که برای همین برند سابقه خرید موفق، مبلغ خرید قابل اتکا یا تطابق برند قابل بررسی دارند.
       </div>
 
       <div
@@ -267,18 +305,18 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
               >
                 <div>
                   <InfoLine
-                    label="Successful Purchases"
-                    value={supplier.successfulPurchaseCount}
+                    label="تعداد خرید موفق از این تامین‌کننده"
+                    value={supplier.successfulPurchaseCount || 0}
                   />
 
                   <InfoLine
-                    label="Evidence Level"
-                    value={supplier.procurementEvidenceLevel}
-                  />
-
-                  <InfoLine
-                    label="Historical Purchase Amount"
+                    label="مبلغ خرید موفق از این تامین‌کننده"
                     value={formatMoney(supplier.successfulPurchaseAmount)}
+                  />
+
+                  <InfoLine
+                    label="سطح شواهد تامین"
+                    value={supplier.procurementEvidenceLevel}
                   />
 
                   <InfoLine label="Score" value={supplier.score} />
@@ -300,12 +338,17 @@ export default function SupplierIntelligenceCard({ supplierIntelligence }) {
                     value={supplier.country}
                   />
 
-                  <InfoLine
-                    label="Website"
-                    value={supplier.website}
-                  />
+                  <div style={{ marginTop: 4 }}>
+                    <LinkButton
+                      label="باز کردن وبسایت"
+                      url={supplier.website}
+                    />
 
-                  <InfoLine label="Store" value={supplier.store} />
+                    <LinkButton
+                      label="باز کردن فروشگاه"
+                      url={supplier.store}
+                    />
+                  </div>
                 </div>
               </div>
 

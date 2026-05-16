@@ -15,6 +15,23 @@ function BrandStatLine({ label, value, muted = false }) {
 export default function BrandStatsCard({ brandStats, ai }) {
   const brandDemandStats = brandStats?.brandDemandStats || [];
 
+  const decisionGradeBrandStats = brandDemandStats
+    .filter(b => {
+      const hasCustomerPurchase =
+        (b.currentCustomerSuccessfulCount || 0) > 0;
+      const hasMarketPurchase =
+        (b.otherCustomersSuccessfulCount || 0) > 0;
+      const hasCustomerDemand =
+        (b.currentCustomerRequestCount || 0) > 0;
+
+      return (
+        hasCustomerPurchase ||
+        hasMarketPurchase ||
+        hasCustomerDemand
+      );
+    })
+    .slice(0, 3);
+
   return (
     <div style={{ ...card, marginBottom: 14 }}>
       <div style={{ ...secTitle, marginBottom: 10 }}>
@@ -41,9 +58,9 @@ export default function BrandStatsCard({ brandStats, ai }) {
         <div>
           <strong>برندهای شناسایی‌شده در RFQ فعلی:</strong>
 
-          {brandDemandStats.length > 0 ? (
+          {decisionGradeBrandStats.length > 0 ? (
             <div style={{ marginTop: 10 }}>
-              {brandDemandStats.map((b, i) => (
+              {decisionGradeBrandStats.map((b, i) => (
                 <div
                   key={`${b.brand}-${i}`}
                   style={{
@@ -64,7 +81,7 @@ export default function BrandStatsCard({ brandStats, ai }) {
                     }}
                   >
                     <strong style={{ color: "#e2e8f0", direction: "ltr" }}>
-                      {b.brand}
+                      {b.canonicalBrand || b.brand}
                     </strong>
 
                     <span
@@ -137,22 +154,11 @@ export default function BrandStatsCard({ brandStats, ai }) {
             </div>
           ) : (
             <div style={{ marginTop: 10, color: "#fbbf24" }}>
-              برند قابل اتکایی از متن RFQ با سوابق تجاری فایل‌ها match نشد. اگر RFQ شامل category مثل MOTOR یا SENSOR باشد، به‌عنوان برند نمایش داده نمی‌شود.
+              برای برند اصلی RFQ سابقه تصمیم‌ساز قابل اتکا پیدا نشد. برندهای عمومی، vendor nameها و موارد بدون خرید واقعی یا بدون ارتباط با همین مشتری عمداً حذف شده‌اند.
             </div>
           )}
         </div>
 
-        {!!ai?.brandProductReview?.similarPurchaseEvidence && (
-          <>
-            <div style={divider} />
-
-            <div>
-              <strong>تحلیل AI از سوابق مشابه:</strong>
-              <br />
-              {ai.brandProductReview.similarPurchaseEvidence}
-            </div>
-          </>
-        )}
 
         {!!ai?.brandProductReview?.customerSpecificPurchaseEvidence && (
           <>
@@ -178,17 +184,6 @@ export default function BrandStatsCard({ brandStats, ai }) {
           </>
         )}
 
-        {!!ai?.brandProductReview?.brandAttractiveness && (
-          <>
-            <div style={divider} />
-
-            <div>
-              <strong>جذابیت برند از دید فروش:</strong>
-              <br />
-              {ai.brandProductReview.brandAttractiveness}
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

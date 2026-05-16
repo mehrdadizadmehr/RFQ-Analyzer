@@ -263,6 +263,16 @@ function normalizeBrandList(values = []) {
   ];
 }
 
+function buildCachedNormalizedMap(rows = [], getter) {
+  const map = new WeakMap();
+
+  rows.forEach(row => {
+    map.set(row, normalizeText(getter(row)));
+  });
+
+  return map;
+}
+
 function buildCommercialInsights(purchaseRow, requestRow) {
   const revenue = getPurchaseAmount(purchaseRow);
 
@@ -329,6 +339,26 @@ export function buildCommercialMatcher({
 
   const relevantBrands = normalizeBrandList(currentBrands);
 
+  const normalizedRequestCustomers = buildCachedNormalizedMap(
+    requestRows,
+    getRequestCustomer
+  );
+
+  const normalizedRequestBrands = buildCachedNormalizedMap(
+    requestRows,
+    getRequestBrand
+  );
+
+  const normalizedPurchaseCustomers = buildCachedNormalizedMap(
+    purchaseRows,
+    getPurchaseCustomer
+  );
+
+  const normalizedPurchaseBrands = buildCachedNormalizedMap(
+    purchaseRows,
+    getPurchaseBrand
+  );
+
   const matches = [];
 
   purchaseRows.forEach((purchaseRow, purchaseIndex) => {
@@ -354,12 +384,24 @@ export function buildCommercialMatcher({
       });
     });
 
+    const purchaseCustomerNormalized =
+      normalizedPurchaseCustomers.get(purchaseRow) || "";
+
+    const purchaseBrandNormalized =
+      normalizedPurchaseBrands.get(purchaseRow) || "";
+
     requestRows.forEach(requestRow => {
       const existing = candidateMap.get(requestRow) || {
         row: requestRow,
         score: 0,
         reasons: [],
       };
+
+      const requestCustomerNormalized =
+        normalizedRequestCustomers.get(requestRow) || "";
+
+      const requestBrandNormalized =
+        normalizedRequestBrands.get(requestRow) || "";
 
       const purchasePi = normalizePi(getPurchasePi(purchaseRow));
       const requestPi = normalizePi(getRequestPi(requestRow));
@@ -370,8 +412,8 @@ export function buildCommercialMatcher({
       }
 
       const customerSimilarity = similarity(
-        getPurchaseCustomer(purchaseRow),
-        getRequestCustomer(requestRow)
+        purchaseCustomerNormalized,
+        requestCustomerNormalized
       );
 
       if (customerSimilarity >= 0.85) {
@@ -380,8 +422,8 @@ export function buildCommercialMatcher({
       }
 
       const brandSimilarity = similarity(
-        getPurchaseBrand(purchaseRow),
-        getRequestBrand(requestRow)
+        purchaseBrandNormalized,
+        requestBrandNormalized
       );
 
       if (brandSimilarity >= 0.85) {
@@ -409,8 +451,9 @@ export function buildCommercialMatcher({
     });
 
     const candidates = [...candidateMap.values()]
+      .filter(c => c.score >= 25)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
+      .slice(0, 3);
 
     const best = candidates[0];
 
@@ -422,7 +465,7 @@ export function buildCommercialMatcher({
       score: best?.score || 0,
       matchReasons: best?.reasons || [],
       candidateCount: candidates.length,
-      alternativeCandidates: candidates.slice(1, 5).map(c => ({
+      alternativeCandidates: candidates.slice(1, 3).map(c => ({
         score: c.score,
         reasons: c.reasons,
         customer: getRequestCustomer(c.row),
@@ -483,7 +526,7 @@ export function buildCommercialMatcher({
         .map(m => m?.commercialInsights?.supplier)
         .filter(Boolean)
     ),
-  ].slice(0, 5);
+  ].slice(0, 3);
 
   const topRelevantBrands = [
     ...new Set(
@@ -491,7 +534,7 @@ export function buildCommercialMatcher({
         .map(m => m?.commercialInsights?.brand)
         .filter(Boolean)
     ),
-  ].slice(0, 5);
+  ].slice(0, 3);
 
   const manualCount = cleanNumber(manualPurchaseCount);
   const manualAmount = cleanNumber(manualPurchaseAmount);

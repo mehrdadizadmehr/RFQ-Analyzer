@@ -58,6 +58,7 @@ function normalizeCanonicalBrand(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+
 function isBrandNoise(value) {
   const normalized = normalizeText(value || "");
 
@@ -87,6 +88,44 @@ function isBrandNoise(value) {
   if (tokenCount >= 6) return true;
 
   return false;
+}
+
+function textContainsPhrase(text = "", phrase = "") {
+  const normalizedText = ` ${normalizeText(text || "")} `;
+  const normalizedPhrase = normalizeText(phrase || "");
+
+  if (!normalizedPhrase || normalizedPhrase.length < 4) {
+    return false;
+  }
+
+  return normalizedText.includes(` ${normalizedPhrase} `);
+}
+
+function isBrandExplicitlyMentionedInRfq(requestText = "", rawBrand = "") {
+  const canonicalBrand = normalizeCanonicalBrand(rawBrand);
+  const normalizedRawBrand = normalizeText(rawBrand || "");
+
+  if (!canonicalBrand || isBrandNoise(canonicalBrand)) {
+    return false;
+  }
+
+  const canonicalKey = normalizeText(canonicalBrand);
+  const knownAliases = CANONICAL_BRAND_ALIASES[canonicalKey] || [];
+
+  if (
+    knownAliases.some(alias =>
+      textContainsPhrase(requestText, alias)
+    )
+  ) {
+    return true;
+  }
+
+  if (isBrandNoise(rawBrand)) {
+    return false;
+  }
+
+  // For unknown brands, require the full brand phrase to be explicitly present in RFQ text.
+  return textContainsPhrase(requestText, normalizedRawBrand);
 }
 
 function looksLikeEngineeringGarbage(value) {
@@ -443,7 +482,7 @@ export function analyzeBrandProductStats(
 
       if (!normalizedBrand) return;
 
-      const requestBrandMatch = isStrongBrandOverlap(
+      const requestBrandMatch = isBrandExplicitlyMentionedInRfq(
         requestText,
         rawBrand
       );
@@ -452,7 +491,11 @@ export function analyzeBrandProductStats(
 
       const key = normalizeCanonicalBrand(rawBrand);
 
-      if (isBrandNoise(key)) {
+      if (
+        isBrandNoise(key) ||
+        key === "MULTIBRAND" ||
+        key === "MULTI BRAND"
+      ) {
         return;
       }
 
